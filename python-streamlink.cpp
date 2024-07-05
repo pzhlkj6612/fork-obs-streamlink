@@ -3,7 +3,15 @@
 #include "python-streamlink.h"
 #include <obs-module.h>
 
+#include <frameobject.h>
+
+#ifdef _MSC_VER
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+#endif
+
+#include <sstream>
+
 namespace streamlink {
     bool loaded = false;
     bool loadingFailed = false;
@@ -36,14 +44,39 @@ namespace streamlink {
     std::string GetExceptionInfo()
     {
         if (!PyErr_Occurred()) return "";
+
+        std::string message{};
+
         PyObject* type, * value, * traceback;
         PyErr_Fetch(&type, &value, &traceback);
-        auto strObj = PyObject_ASCII(value);
 
-        std::string message = PyStringToString(strObj);
-        Py_DECREF(strObj);
+        if (traceback) {
+            PyErr_NormalizeException(&type, &value, &traceback);
 
-        PyErr_Clear();
+            message.append("Traceback (most recent call last): \n");
+
+            auto tb = reinterpret_cast<PyTracebackObject *>(traceback);
+            while (tb) {
+                {
+                    std::stringstream tb_line{};
+                    tb_line << "  File \"" << PyUnicode_AsUTF8(tb->tb_frame->f_code->co_filename) <<  "\", line " << tb->tb_lineno << ", in " << PyUnicode_AsUTF8(tb->tb_frame->f_code->co_name) << std::endl;
+                    message.append(tb_line.str());
+                }
+                tb = tb->tb_next;
+            }
+        }
+
+        message.append(reinterpret_cast<PyTypeObject*>(type)->tp_name);
+
+        auto s = std::string(PyUnicode_AsUTF8(PyObject_Str(value)));
+        if (!s.empty()) {
+            message.append(": ");
+            message.append(s);
+            message.append("\n");
+        }
+
+        PyErr_Clear(); // required?
+
         return message;
     }
     void LogFailure()
@@ -64,9 +97,8 @@ namespace streamlink {
         if (!Py_IsInitialized())
         {
             // TODO make this configurable via properties.
-            std::string data_path = obs_get_module_data_path(obs_current_module());
-            std::string python_path = data_path.append("/Python38");
-            std::wstring widstr = std::wstring(python_path.begin(), python_path.end());
+            std::string python_path{R"(A:\obs-debug-install\data\obs-plugins\obs-streamlink\-1Python38)"};
+            auto widstr = std::wstring(python_path.begin(), python_path.end());
             Py_SetPythonHome(widstr.c_str());
             Py_Initialize();
         }
@@ -81,7 +113,7 @@ namespace streamlink {
         loaded = true;
         PyEval_ReleaseThread(PyThreadState_Get());
     }
-    
+
     PyObjectHolder::PyObjectHolder(PyObject* underlying, bool inc) : underlying(underlying)
     {
         if (inc)
@@ -107,7 +139,7 @@ namespace streamlink {
 
         return *this;
     }
-    
+
     Stream::Stream(PyObject* u) : PyObjectHolder(u)
     {
     }
@@ -133,7 +165,7 @@ namespace streamlink {
         char* buf1;
         ssize_t readLen;
         PyBytes_AsStringAndSize(result, &buf1, &readLen);
-        std::memcpy(buf, buf1, readLen);
+        std::memcpy(buf, buf1, readLen > len ? len : readLen);
 
         if (readLen == 0) throw stream_ended();
         return static_cast<int>(readLen);
@@ -175,7 +207,7 @@ namespace streamlink {
             throw call_failure(GetExceptionInfo().c_str());
         return result;
     }
-    
+
     ThreadGIL::ThreadGIL()
     {
         state = PyGILState_Ensure();
@@ -244,7 +276,7 @@ namespace streamlink {
             auto nameObj = PyTuple_GetItem(itemTuple, 0);
             auto valueObj = PyTuple_GetItem(itemTuple, 1); // no need to +ref, done by `StreamInfo` ctor
             auto name = PyStringToString(nameObj);
-            
+
             ret.emplace(std::piecewise_construct, std::forward_as_tuple(name), std::forward_as_tuple(name, valueObj));
             //ret.emplace(name, StreamInfo(name, valueObj));
         }

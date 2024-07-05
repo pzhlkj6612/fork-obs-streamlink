@@ -1,25 +1,25 @@
 #pragma once
 
-#include <corecrt.h>
-
 #define PY_SSIZE_T_CLEAN
-#ifdef _DEBUG
-#define STREAMLINK_DEBUG
+// https://stackoverflow.com/questions/16200997/why-doesnt-include-python-h-work
+#ifdef _DEBUG // NOLINT(*-reserved-identifier)
+// https://github.com/pybind/pybind11/pull/3497/files#diff-39c6730bb01adf8717187cd92922902820e0a665e450b0fe1d54f8b68ab7f39b
+#include <yvals.h>
+#if _MSVC_STL_VERSION >= 143
+#include <crtdefs.h>
 #endif
-
-#undef _DEBUG  // NOLINT(clang-diagnostic-reserved-macro-identifier)
-//#ifdef STREAMLINK_DEBUG // requires debugging version of Python
-//#define Py_REF_DEBUG
-//#endif
+#undef _DEBUG
 #include <Python.h>
-
-#ifdef STREAMLINK_DEBUG
 #define _DEBUG
+#else
+#include <Python.h>
 #endif
 
 #include <string>
 #include <functional>
 #include <map>
+#include <stdexcept>
+
 namespace streamlink {
     extern bool loaded;
     extern bool loadingFailed;
@@ -62,22 +62,14 @@ namespace streamlink {
         PyObjectHolder& operator=(PyObjectHolder&& another) noexcept;
     };
     class not_loaded : public std::exception {};
-    class call_failure : public std::exception
+    class call_failure : public std::runtime_error
     {
     public:
 
         call_failure() = default;
 
         explicit call_failure(char const* message)
-            : exception(message)
-        { }
-
-        call_failure(char const* message, int i)
-            : exception(message, i)
-        { }
-
-        explicit call_failure(exception const& other)
-            : exception(other)
+            : std::runtime_error(message)
         { }
     };
     class invalid_underlying_object : public std::exception {};

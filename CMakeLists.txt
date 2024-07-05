@@ -1,72 +1,121 @@
-cmake_minimum_required(VERSION 3.20)
-set(CMAKE_CXX_STANDARD 20)
-project(obs-streamlink)
+cmake_minimum_required(VERSION 3.22.1)
 
-set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}")
+project(obs-streamlink C CXX)
+set(CMAKE_CXX_STANDARD 17)
 
-find_package(FFmpeg REQUIRED
-    COMPONENTS avcodec avfilter avdevice avutil swscale avformat swresample)
-find_package(Python3 3.8 EXACT REQUIRED COMPONENTS Interpreter Development)
-find_library(Python3Gen NAME "python38.lib" PATHS "${Python3_LIBRARY_DIRS}" NO_DEFAULT_PATH)
-#find_library(Python3Gen_Debug NAME "python38_d.lib" PATHS "${Python3_LIBRARY_DIRS}" NO_DEFAULT_PATH)
+list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}")
 
-set(CMAKE_INCLUDE_CURRENT_DIR ON)
+find_package(Python 3.8...3.11 REQUIRED COMPONENTS Development.Module)
+find_package(FFmpeg REQUIRED COMPONENTS swscale)
 
-add_library(obs-streamlink SHARED
-    obs-streamlink.cpp
-    streamlink-delayload.cpp
-    streamlink-source.cpp
-    media-playback/decode.cpp
-    media-playback/media.cpp
-    python-streamlink.cpp
+
+set(OBS_STUDIO_SOURCE_PATH "" CACHE PATH "the path to the source code of OBS Studio")
+if (NOT EXISTS "${OBS_STUDIO_SOURCE_PATH}/CMakeLists.txt" OR NOT EXISTS "${OBS_STUDIO_SOURCE_PATH}/libobs")
+    message(FATAL_ERROR "Please specify valid OBS_STUDIO_SOURCE_PATH")
+endif ()
+
+add_subdirectory("${OBS_STUDIO_SOURCE_PATH}/deps/media-playback" deps/obs-studio-media-playback EXCLUDE_FROM_ALL)
+target_link_libraries(media-playback INTERFACE ${FFMPEG_LIBRARIES})
+
+if (MSVC)
+    add_library(w32-pthreads SHARED IMPORTED)
+endif ()
+add_library(libobs SHARED IMPORTED)
+add_library(libobs-frontend-api SHARED IMPORTED)
+
+add_library(${PROJECT_NAME} SHARED
+        obs-streamlink.cpp
+        python-streamlink.cpp
+        streamlink-source.cpp
 )
-target_include_directories(obs-streamlink PRIVATE
-    "${FFMPEG_INCLUDE_DIRS}"
-    "${W32_PTHREADS_INCLUDES}"
-    "${LIBOBS_INCLUDE_DIR}"
-    "${OBS_FRONTEND_INCLUDE_DIR}"
-    "${Python3_INCLUDE_DIRS}"
-    "deps/"
+if (MSVC)
+    target_sources(${PROJECT_NAME} PRIVATE streamlink-delayload.cpp)
+endif ()
+target_include_directories(${PROJECT_NAME} PRIVATE
+        "deps/"
 )
-
-target_compile_options(obs-streamlink PUBLIC "/utf-8")
-target_link_options(obs-streamlink PUBLIC
-        "/NODEFAULTLIB:python38_d.lib"
-        "/NODEFAULTLIB:python3_d.lib"
-        "/NODEFAULTLIB:python38.lib"
-        "/NODEFAULTLIB:python3.lib"
-
-        "/NODEFAULTLIB:avcodec.lib"
-        "/NODEFAULTLIB:avdevice.lib"
-        "/NODEFAULTLIB:avfilter.lib"
-        "/NODEFAULTLIB:avformat.lib"
-        "/NODEFAULTLIB:avutil.lib"
-        "/NODEFAULTLIB:swresample.lib"
-        "/NODEFAULTLIB:swscale.lib"
-
-        "/DELAYLOAD:python38.dll"
-        "/DELAYLOAD:avcodec-59.dll"
-        "/DELAYLOAD:avdevice-59.dll"
-        "/DELAYLOAD:avfilter-8.dll"
-        "/DELAYLOAD:avformat-59.dll"
-        "/DELAYLOAD:avutil-57.dll"
-        "/DELAYLOAD:swresample-4.dll"
-        "/DELAYLOAD:swscale-6.dll"  
+target_link_libraries(${PROJECT_NAME} PRIVATE
+        Python::Module media-playback
+        libobs libobs-frontend-api
+)
+if (MSVC)
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+            w32-pthreads
+    )
+endif ()
+target_compile_options(${PROJECT_NAME}
+        PRIVATE "$<$<C_COMPILER_ID:MSVC>:/utf-8>"
+        PRIVATE "$<$<CXX_COMPILER_ID:MSVC>:/utf-8>"
 )
 
-target_link_libraries(obs-streamlink PRIVATE
-    "${LIBOBS_LIB}"
-    "${W32_PTHREADS_LIB}"
-    "${OBS_FRONTEND_LIB}"
-    "${FFMPEG_LIBRARIES}"
-    delayimp)
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    target_link_libraries(obs-streamlink PRIVATE "${Python3Gen}")
-else()
-    target_link_libraries(obs-streamlink PRIVATE "${Python3Gen}")
-endif()
+if (MSVC)
+    get_filename_component(python-stable-abi-lib-filename ${Python_RUNTIME_LIBRARY} NAME)
+    target_link_options(${PROJECT_NAME} PRIVATE
+            "/DELAYLOAD:${python-stable-abi-lib-filename}"
+    )
+endif ()
 
-add_custom_command(TARGET obs-streamlink POST_BUILD
-        # Copy to obs-studio dev environment for immediate testing
-        COMMAND powershell -Command "if ($<CONFIG:Debug> -eq 1 ) { robocopy ${PROJECT_SOURCE_DIR}/out/build/x64-Debug ${OBS_RUNDIR}/obs-plugins/64bit ${OBS_ARCH_NAME}; robocopy ${PROJECT_SOURCE_DIR}/data ${OBS_RUNDIR}/data/obs-plugins/obs-streamlink /E;}"
+install(TARGETS ${PROJECT_NAME} DESTINATION "obs-plugins/64bit" RUNTIME)
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/data/ DESTINATION "data/obs-plugins/obs-streamlink")
+
+
+set(OBS_STUDIO_BUILD_PATH "${CMAKE_BINARY_DIR}/obs-studio-build")
+
+# Depending on Package Config file as External Project - Code - CMake Discourse
+#   https://discourse.cmake.org/t/1501
+list(JOIN CMAKE_PREFIX_PATH "|" CMAKE_PREFIX_PATH_ALT_SEP)
+include(ExternalProject)
+ExternalProject_Add(
+        obs-studio-source
+        SOURCE_DIR "${OBS_STUDIO_SOURCE_PATH}"
+        BINARY_DIR "${OBS_STUDIO_BUILD_PATH}"
+        INSTALL_DIR ""
+        LIST_SEPARATOR "|"
+        CMAKE_ARGS
+        "-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
+        "-DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH_ALT_SEP}"
+        BUILD_COMMAND "${CMAKE_COMMAND}" --build <BINARY_DIR> --config $<CONFIG> --target w32-pthreads libobs obs-frontend-api
+        INSTALL_COMMAND ""
 )
+
+if (MSVC)
+    target_compile_definitions(w32-pthreads INTERFACE "-DHAVE_STRUCT_TIMESPEC=1")
+    set_target_properties(w32-pthreads PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${OBS_STUDIO_SOURCE_PATH}/deps/w32-pthreads"
+            IMPORTED_IMPLIB_DEBUG "${OBS_STUDIO_BUILD_PATH}/deps/w32-pthreads/Debug/w32-pthreads.lib"
+            IMPORTED_IMPLIB_RELEASE "${OBS_STUDIO_BUILD_PATH}/deps/w32-pthreads/Release/w32-pthreads.lib"
+            IMPORTED_IMPLIB_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/deps/w32-pthreads/MinSizeRel/w32-pthreads.lib"
+            IMPORTED_IMPLIB_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/deps/w32-pthreads/RelWithDebInfo/w32-pthreads.lib"
+            IMPORTED_LOCATION_DEBUG "${OBS_STUDIO_BUILD_PATH}/rundir/Debug/bin/64bit/w32-pthreads.dll"
+            IMPORTED_LOCATION_RELEASE "${OBS_STUDIO_BUILD_PATH}/rundir/Release/bin/64bit/w32-pthreads.dll"
+            IMPORTED_LOCATION_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/rundir/MinSizeRel/bin/64bit/w32-pthreads.dll"
+            IMPORTED_LOCATION_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/rundir/RelWithDebInfo/bin/64bit/w32-pthreads.dll"
+    )
+    add_dependencies(w32-pthreads obs-studio-source)
+endif ()
+
+set_target_properties(libobs PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "${OBS_STUDIO_SOURCE_PATH}/libobs"
+        IMPORTED_IMPLIB_DEBUG "${OBS_STUDIO_BUILD_PATH}/libobs/Debug/obs.lib"
+        IMPORTED_IMPLIB_RELEASE "${OBS_STUDIO_BUILD_PATH}/libobs/Release/obs.lib"
+        IMPORTED_IMPLIB_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/libobs/MinSizeRel/obs.lib"
+        IMPORTED_IMPLIB_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/libobs/RelWithDebInfo/obs.lib"
+        IMPORTED_LOCATION_DEBUG "${OBS_STUDIO_BUILD_PATH}/rundir/Debug/bin/64bit/obs.dll"
+        IMPORTED_LOCATION_RELEASE "${OBS_STUDIO_BUILD_PATH}/rundir/Release/bin/64bit/obs.dll"
+        IMPORTED_LOCATION_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/rundir/MinSizeRel/bin/64bit/obs.dll"
+        IMPORTED_LOCATION_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/rundir/RelWithDebInfo/bin/64bit/obs.dll"
+)
+add_dependencies(libobs obs-studio-source)
+
+set_target_properties(libobs-frontend-api PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "${OBS_STUDIO_SOURCE_PATH}/UI/obs-frontend-api"
+        IMPORTED_IMPLIB_DEBUG "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/Debug/obs-frontend-api.lib"
+        IMPORTED_IMPLIB_RELEASE "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/Release/obs-frontend-api.lib"
+        IMPORTED_IMPLIB_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/MinSizeRel/obs-frontend-api.lib"
+        IMPORTED_IMPLIB_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/RelWithDebInfo/obs-frontend-api.lib"
+        IMPORTED_LOCATION_DEBUG "${OBS_STUDIO_BUILD_PATH}/rundir/Debug/bin/64bit/obs-frontend-api.dll"
+        IMPORTED_LOCATION_RELEASE "${OBS_STUDIO_BUILD_PATH}/rundir/Release/bin/64bit/obs-frontend-api.dll"
+        IMPORTED_LOCATION_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/rundir/MinSizeRel/bin/64bit/obs-frontend-api.dll"
+        IMPORTED_LOCATION_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/rundir/RelWithDebInfo/bin/64bit/obs-frontend-api.dll"
+)
+add_dependencies(libobs-frontend-api obs-studio-source)

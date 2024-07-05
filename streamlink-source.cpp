@@ -2,13 +2,20 @@
 // ReSharper disable CppClangTidyClangDiagnosticGnuZeroVariadicMacroArguments
 
 #include <obs-module.h>
+#ifdef _MSC_VER
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+#endif
 #include <util/platform.h>
 #include <util/dstr.h>
-#include <nlohmann/json.hpp>
+#include "nlohmann/json.hpp"
 #include "python-streamlink.h"
-#include "media-playback/media.h"
+extern "C" {
+#include <media-playback/media.h>
+}
 
-using namespace streamlinkish_mp;
+#include <sstream>
+
 
 #define FF_LOG(level, format, ...) \
 	blog(level, "[Streamlink Source]: " format, ##__VA_ARGS__)
@@ -40,12 +47,6 @@ struct streamlink_source {
 	bool media_valid{};
 	bool destroy_media{};
 
-	SwsContext *sws_ctx{};
-	int sws_width{};
-	int sws_height{};
-	AVPixelFormat sws_format = AV_PIX_FMT_NONE;
-	uint8_t *sws_data{};
-	int sws_linesize{};
 	obs_source_t *source{};
 	obs_hotkey_id hotkey{};
 
@@ -53,14 +54,18 @@ struct streamlink_source {
 	char* definitions{};
 	std::vector<std::string>* available_definitions{};
 
-	char* ffmpeg_options{};
 	bool is_hw_decoding{};
-	bool is_setting_frame_open=false;
 
 	streamlink::Stream* stream{};
 	streamlink::Session* streamlink_session{};
+
+	std::string pipe_path{};
+	pthread_t thread;
+	os_event_t *stop_signal;
 };
 using streamlink_source_t = struct streamlink_source;
+
+HANDLE write_pipe;
 
 void set_streamlink_custom_options(const char* custom_options_s, streamlink_source_t* s)
 {
@@ -121,7 +126,7 @@ bool update_streamlink_session(void* data, obs_data_t* settings) {
 		session->SetOptionInt("hls-live-edge", hls_live_edge);
 		session->SetOptionInt("hls-segment-threads", hls_segment_threads);
 		session->SetOptionDouble("http-timeout", 5.0);
-		session->SetOptionString("ffmpeg-ffmpeg", "DISABLED");
+		session->SetOptionString("ffmpeg-ffmpeg", "A:/ffmpeg-5.1.2-full_build-shared/bin/ffmpeg.exe");
 		set_streamlink_custom_options(custom_options_s, s);
 		return true;
 	}
@@ -161,7 +166,7 @@ bool refresh_definitions(obs_properties_t* props,obs_property_t* prop,void* data
 		return true;
 	}
 	catch (std::exception & ex) {
-		FF_BLOG(LOG_WARNING, "Error fetching stream definitions for URL %s: %s", url, ex.what());
+		FF_BLOG(LOG_WARNING, "Error fetching stream definitions for URL \"%s\": \n%s", url, ex.what());
 		return false;
 	}
 }
@@ -218,7 +223,7 @@ static obs_properties_t *streamlink_source_getproperties(void *data)
 	// Introducing this options will only cause confusion.
 	//prop = obs_properties_add_text(advanced_settings, FFMPEG_CUSTOM_OPTIONS, obs_module_text(FFMPEG_CUSTOM_OPTIONS), OBS_TEXT_MULTILINE);
 	//obs_property_set_long_description(prop, obs_module_text(FFMPEG_CUSTOM_OPTIONS_TOOLTIP));
-	
+
 	obs_properties_add_group(props, ADVANCED_SETTINGS, obs_module_text(ADVANCED_SETTINGS),OBS_GROUP_NORMAL,advanced_settings);
 
 	return props;
@@ -230,6 +235,7 @@ static void get_frame(void *opaque, struct obs_source_frame *f)
 {
 	auto *s = static_cast<streamlink_source_t*>(opaque);
 	obs_source_output_video(s->source, f);
+	// blog(LOG_INFO, "get_frame: %u", *f->data);
 }
 
 static void preload_frame(void *opaque, struct obs_source_frame *f)
@@ -261,6 +267,8 @@ static void media_stopped(void *opaque)
 }
 
 static int read_packet(void* opaque, uint8_t* buf, int buf_size) {
+	blog(LOG_INFO, "read_packet: [x, x, %d]", buf_size);
+
     auto c = static_cast<streamlink_source_t*>(opaque);
 	streamlink::ThreadGIL state = streamlink::ThreadGIL();
 	try {
@@ -306,6 +314,66 @@ void streamlink_close(void* opaque) {
 	}
 }
 
+static void *write_pipe_thread(void *data) {
+    const auto s = static_cast<streamlink_source_t*>(data);
+
+	write_pipe = CreateNamedPipe(
+		s->pipe_path.c_str(),
+		PIPE_ACCESS_OUTBOUND,
+		PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+		PIPE_UNLIMITED_INSTANCES,
+		0,
+		0,
+		0,
+		nullptr
+	);
+	if (write_pipe == INVALID_HANDLE_VALUE) {
+		std::stringstream msg{};
+		msg << "INVALID_HANDLE_VALUE: " << GetLastError();
+		throw std::exception{msg.str().c_str()};
+	}
+	ConnectNamedPipe(write_pipe, nullptr);
+
+	os_set_thread_name("write thread");
+
+	std::vector<uint8_t> read_buf(1024 * 1024, '0');
+
+	while (os_event_try(s->stop_signal) == EAGAIN) {
+		int read_size = 0;
+		{
+			streamlink::ThreadGIL state = streamlink::ThreadGIL();
+			read_size = s->stream->Read(read_buf.data(), read_buf.size());
+		}
+
+		if (read_size == 0) {
+			printf("write: EOF \n");
+			if (CloseHandle(write_pipe) == FALSE) {
+				std::stringstream msg{};
+				msg << "CloseHandle(pipe_write_handle): " << GetLastError();
+				throw std::exception{msg.str().c_str()};
+			}
+			break;
+		}
+
+		DWORD numWritten;
+		if (WriteFile(write_pipe, read_buf.data(), read_size, &numWritten, nullptr) == FALSE) {
+			auto ec = GetLastError();
+			printf("ec = %lu \n", ec);
+			if (ec != ERROR_BROKEN_PIPE) {
+				std::stringstream msg{};
+				msg << "WriteFile: " << GetLastError();
+				throw std::exception{msg.str().c_str()};
+			}
+			break;
+		}
+		// printf("numWritten=%lld \n", numWritten);
+	}
+
+	return nullptr;
+}
+
+static void streamlink_source_destroy(void* data);
+
 static void streamlink_source_open(struct streamlink_source *s)
 {
 	if (s->live_room_url && *s->live_room_url) {
@@ -313,23 +381,32 @@ static void streamlink_source_open(struct streamlink_source *s)
 			s,
 			get_frame,
 			preload_frame,
-			seek_frame,
+        	seek_frame,
 			get_audio,
 			media_stopped,
-			read_packet,
-			s->live_room_url,
-			nullptr,
-			s->ffmpeg_options,
+			s->pipe_path.c_str(),
+        	nullptr,
+        	nullptr,
 			0,
 			100,
 			VIDEO_RANGE_DEFAULT,
 			false,
 			s->is_hw_decoding,
 			false,
-		    false
+		    false,
 		};
-		if (streamlink_open(s) == 0)
+		if (streamlink_open(s) == 0) {
+			if (os_event_init(&s->stop_signal, OS_EVENT_TYPE_MANUAL) != 0) {
+				streamlink_source_destroy(s);
+				return;
+			}
+
+			if (pthread_create(&s->thread, nullptr, write_pipe_thread, s) != 0) {
+				streamlink_source_destroy(s);
+				return;
+			}
 			s->media_valid = mp_media_init(&s->media, &info);
+		}
 		else s->media_valid = false; // streamlink FAILED
 	}
 }
@@ -369,14 +446,8 @@ static void streamlink_source_update(void *data, obs_data_t *settings)
 		bfree(s->live_room_url);
 	const char* live_room_url = obs_data_get_string(settings, URL);
 	s->live_room_url = live_room_url ? bstrdup(live_room_url) : NULL;
-	
-	s->is_hw_decoding = obs_data_get_bool(settings, HW_DECODE);
 
-	// Removed due to confusion, see `streamlink_source_getproperties`.
-	//if (s->ffmpeg_options)
-	//	bfree(s->ffmpeg_options);
-	//const char* ffmpeg_options = obs_data_get_string(settings, FFMPEG_CUSTOM_OPTIONS);
-	//s->ffmpeg_options = ffmpeg_options ? bstrdup(ffmpeg_options) : NULL;
+	s->is_hw_decoding = obs_data_get_bool(settings, HW_DECODE);
 
 	if (s->media_valid) {
 		mp_media_free(&s->media);
@@ -460,8 +531,6 @@ static void get_nb_frames(void *data, calldata_t *cd)
 	calldata_set_int(cd, "num_frames", frames);
 }
 
-static void streamlink_source_destroy(void* data);
-
 static void *streamlink_source_create(obs_data_t *settings, obs_source_t *source)
 {
     auto s = static_cast<streamlink_source_t*>(bzalloc(sizeof(struct streamlink_source)));
@@ -484,6 +553,13 @@ static void *streamlink_source_create(obs_data_t *settings, obs_source_t *source
 		streamlink_source_destroy(s);
 		return nullptr;
 	}
+
+	{
+		std::stringstream path{};
+    	path << R"(\\.\pipe\obs-streamlink-)" << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    	s->pipe_path = path.str();
+	}
+
 	streamlink_source_update(s, settings);
 	return s;
 }
@@ -497,10 +573,11 @@ static void streamlink_source_destroy(void *data)
 	if (s->media_valid)
 		mp_media_free(&s->media);
 
-	if (s->sws_ctx != NULL)
-		sws_freeContext(s->sws_ctx);
+	os_event_signal(s->stop_signal);
+	pthread_join(s->thread, NULL);
+	os_event_destroy(s->stop_signal);
+
 	streamlink_close(s);
-	bfree(s->sws_data);
 	bfree(s->live_room_url);
 	bfree(s->definitions);
 	delete s->available_definitions;
@@ -534,9 +611,9 @@ extern "C" obs_source_info streamlink_source_info = {
 	"streamlink_source",                                  // id
 	OBS_SOURCE_TYPE_INPUT,                                // type
 	OBS_SOURCE_ASYNC_VIDEO                                // output_flags
-    | OBS_SOURCE_AUDIO
-    | OBS_SOURCE_DO_NOT_DUPLICATE
-    | OBS_SOURCE_CONTROLLABLE_MEDIA,
+	| OBS_SOURCE_AUDIO
+	| OBS_SOURCE_DO_NOT_DUPLICATE
+	| OBS_SOURCE_CONTROLLABLE_MEDIA,
 	streamlink_source_getname,                            // get_name
 	streamlink_source_create,                             // create
 	streamlink_source_destroy,                            // destroy
@@ -553,10 +630,10 @@ extern "C" obs_source_info streamlink_source_info = {
 	nullptr, nullptr,                                     // save, load
 	nullptr, nullptr, nullptr, nullptr,                   // mouse_move, mouse_wheel, focus, key_click
 	nullptr, nullptr, nullptr, nullptr, nullptr,
-    nullptr, nullptr, nullptr, nullptr, nullptr,nullptr,
+	nullptr, nullptr, nullptr, nullptr, nullptr,nullptr,
 	OBS_ICON_TYPE_MEDIA,                                  // icon_type
 	nullptr,                                              // media_play_pause
-    streamlink_source_restart,                            // media_restart
-	streamlink_source_hide                                // stop
+	streamlink_source_restart,                            // media_restart
+	streamlink_source_hide,                               // stop
 	// other initializer omitted
 };  // NOLINT(clang-diagnostic-missing-field-initializers)
