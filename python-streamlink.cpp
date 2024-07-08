@@ -10,6 +10,7 @@
 #include <Windows.h>
 #endif
 
+#include <cstring>
 #include <sstream>
 
 namespace streamlink {

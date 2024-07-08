@@ -14,6 +14,7 @@ extern "C" {
 #include <media-playback/media.h>
 }
 
+#include <fstream>
 #include <sstream>
 
 
@@ -317,6 +318,7 @@ void streamlink_close(void* opaque) {
 static void *write_pipe_thread(void *data) {
     const auto s = static_cast<streamlink_source_t*>(data);
 
+#ifdef _MSC_VER
 	write_pipe = CreateNamedPipe(
 		s->pipe_path.c_str(),
 		PIPE_ACCESS_OUTBOUND,
@@ -330,9 +332,22 @@ static void *write_pipe_thread(void *data) {
 	if (write_pipe == INVALID_HANDLE_VALUE) {
 		std::stringstream msg{};
 		msg << "INVALID_HANDLE_VALUE: " << GetLastError();
-		throw std::exception{msg.str().c_str()};
+		throw std::runtime_error{msg.str().c_str()};
 	}
 	ConnectNamedPipe(write_pipe, nullptr);
+#else
+	if (mkfifo(s->pipe_path.c_str(), 700) != 0) {
+		std::stringstream msg{};
+		msg << "mkfifo: " << errno;
+		throw std::runtime_error{msg.str().c_str()};
+	}
+	std::ofstream outfife(myfifo, std::ofstream::binary);
+	if (!outfife.is_open()) {
+		std::stringstream msg{};
+		msg << "open outfife: " << errno;
+		throw std::runtime_error{msg.str().c_str()};
+	}
+#endif
 
 	os_set_thread_name("write thread");
 
@@ -347,25 +362,33 @@ static void *write_pipe_thread(void *data) {
 
 		if (read_size == 0) {
 			printf("write: EOF \n");
+#ifdef _MSC_VER
 			if (CloseHandle(write_pipe) == FALSE) {
 				std::stringstream msg{};
 				msg << "CloseHandle(pipe_write_handle): " << GetLastError();
-				throw std::exception{msg.str().c_str()};
+				throw std::runtime_error{msg.str().c_str()};
 			}
+#else
+			outfife.close();
+#endif
 			break;
 		}
 
 		DWORD numWritten;
+#ifdef _MSC_VER
 		if (WriteFile(write_pipe, read_buf.data(), read_size, &numWritten, nullptr) == FALSE) {
 			auto ec = GetLastError();
 			printf("ec = %lu \n", ec);
 			if (ec != ERROR_BROKEN_PIPE) {
 				std::stringstream msg{};
 				msg << "WriteFile: " << GetLastError();
-				throw std::exception{msg.str().c_str()};
+				throw std::runtime_error{msg.str().c_str()};
 			}
 			break;
 		}
+#else
+		outfife << (char*)&read_buf[0], read_buf.size() * sizeof(uint8_t);
+#endif
 		// printf("numWritten=%lld \n", numWritten);
 	}
 
@@ -556,7 +579,12 @@ static void *streamlink_source_create(obs_data_t *settings, obs_source_t *source
 
 	{
 		std::stringstream path{};
-    	path << R"(\\.\pipe\obs-streamlink-)" << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+#ifdef _MSC_VER
+    	path << R"(\\.\pipe\obs-streamlink-)";
+#else
+    	path << "/tmp/obs-streamlink-pipe-";
+#endif
+    	path << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
     	s->pipe_path = path.str();
 	}
 
