@@ -23,41 +23,49 @@ endif ()
 add_library(libobs SHARED IMPORTED)
 add_library(libobs-frontend-api SHARED IMPORTED)
 
-add_library(${PROJECT_NAME} SHARED
+add_library(${CMAKE_PROJECT_NAME} SHARED
         obs-streamlink.cpp
         python-streamlink.cpp
         streamlink-source.cpp
 )
 if (MSVC)
-    target_sources(${PROJECT_NAME} PRIVATE streamlink-delayload.cpp)
+    target_sources(${CMAKE_PROJECT_NAME} PRIVATE streamlink-delayload.cpp)
 endif ()
-target_include_directories(${PROJECT_NAME} PRIVATE
+target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
         "deps/"
 )
-target_link_libraries(${PROJECT_NAME} PRIVATE
+target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE
         Python::Module media-playback
         libobs libobs-frontend-api
 )
 if (MSVC)
-    target_link_libraries(${PROJECT_NAME} PRIVATE
+    target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE
             w32-pthreads
     )
 endif ()
-target_compile_options(${PROJECT_NAME}
+target_compile_options(${CMAKE_PROJECT_NAME}
         PRIVATE "$<$<C_COMPILER_ID:MSVC>:/utf-8>"
         PRIVATE "$<$<CXX_COMPILER_ID:MSVC>:/utf-8>"
 )
 
 if (MSVC)
     get_filename_component(python-stable-abi-lib-filename ${Python_RUNTIME_LIBRARY} NAME)
-    target_link_options(${PROJECT_NAME} PRIVATE
+    target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
             "/DELAYLOAD:${python-stable-abi-lib-filename}"
     )
 endif ()
 
-install(TARGETS ${PROJECT_NAME} DESTINATION "obs-plugins/64bit" RUNTIME)
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/data/ DESTINATION "data/obs-plugins/obs-streamlink")
-
+if (WIN32)
+    install(TARGETS ${CMAKE_PROJECT_NAME} RUNTIME DESTINATION "obs-plugins/64bit")
+    install(FILES $<TARGET_PDB_FILE:${CMAKE_PROJECT_NAME}> DESTINATION "obs-plugins/64bit" OPTIONAL)
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/data/ DESTINATION "data/obs-plugins/obs-streamlink")
+elseif (APPLE)
+    # TODO
+else ()
+    # https://github.com/obsproject/obs-plugintemplate/blob/e3688b7491c52ef6e37ac59daa93e7cf4d9e2b28/cmake/linux/helpers.cmake
+    install(TARGETS ${CMAKE_PROJECT_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_LIBDIR}/obs-plugins")
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/data/ DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/obs/obs-plugins/obs-streamlink")
+endif()
 
 set(OBS_STUDIO_BUILD_PATH "${CMAKE_BINARY_DIR}/obs-studio-build")
 

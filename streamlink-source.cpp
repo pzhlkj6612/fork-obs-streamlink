@@ -5,6 +5,9 @@
 #ifdef _MSC_VER
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+#else
+#include <sys/stat.h>
+#include <sys/types.h>
 #endif
 #include <util/platform.h>
 #include <util/dstr.h>
@@ -15,6 +18,7 @@ extern "C" {
 }
 
 #include <fstream>
+#include <filesystem>
 #include <sstream>
 
 
@@ -65,8 +69,6 @@ struct streamlink_source {
 	os_event_t *stop_signal;
 };
 using streamlink_source_t = struct streamlink_source;
-
-HANDLE write_pipe;
 
 void set_streamlink_custom_options(const char* custom_options_s, streamlink_source_t* s)
 {
@@ -316,10 +318,12 @@ void streamlink_close(void* opaque) {
 }
 
 static void *write_pipe_thread(void *data) {
+	os_set_thread_name("write_thread");
+
     const auto s = static_cast<streamlink_source_t*>(data);
 
 #ifdef _MSC_VER
-	write_pipe = CreateNamedPipe(
+	auto write_pipe = CreateNamedPipe(
 		s->pipe_path.c_str(),
 		PIPE_ACCESS_OUTBOUND,
 		PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
@@ -336,20 +340,28 @@ static void *write_pipe_thread(void *data) {
 	}
 	ConnectNamedPipe(write_pipe, nullptr);
 #else
-	if (mkfifo(s->pipe_path.c_str(), 700) != 0) {
-		std::stringstream msg{};
-		msg << "mkfifo: " << errno;
-		throw std::runtime_error{msg.str().c_str()};
+	if (mkfifo(s->pipe_path.c_str(), S_IRUSR | S_IWUSR) != 0) {
+		if (errno != EEXIST) {
+			std::stringstream msg{};
+			msg << "mkfifo: " << errno;
+			FF_BLOG(LOG_INFO, "%s", msg.str().c_str());
+			throw std::runtime_error{msg.str().c_str()};
+		}
 	}
-	std::ofstream outfife(myfifo, std::ofstream::binary);
+
+	FF_BLOG(LOG_INFO, "opening...");
+	std::ofstream outfife(s->pipe_path, std::iostream::binary);
+
+	FF_BLOG(LOG_INFO, "opened?");
 	if (!outfife.is_open()) {
 		std::stringstream msg{};
 		msg << "open outfife: " << errno;
+		FF_BLOG(LOG_INFO, "open outfife: %s", msg.str().c_str());
 		throw std::runtime_error{msg.str().c_str()};
 	}
 #endif
 
-	os_set_thread_name("write thread");
+	FF_BLOG(LOG_INFO, "ready to read and write");
 
 	std::vector<uint8_t> read_buf(1024 * 1024, '0');
 
@@ -361,7 +373,7 @@ static void *write_pipe_thread(void *data) {
 		}
 
 		if (read_size == 0) {
-			printf("write: EOF \n");
+			FF_BLOG(LOG_INFO, "read: EOF");
 #ifdef _MSC_VER
 			if (CloseHandle(write_pipe) == FALSE) {
 				std::stringstream msg{};
@@ -374,11 +386,11 @@ static void *write_pipe_thread(void *data) {
 			break;
 		}
 
-		DWORD numWritten;
 #ifdef _MSC_VER
+		DWORD numWritten;
 		if (WriteFile(write_pipe, read_buf.data(), read_size, &numWritten, nullptr) == FALSE) {
 			auto ec = GetLastError();
-			printf("ec = %lu \n", ec);
+			FF_BLOG(LOG_INFO, "ec = %lu", ec);
 			if (ec != ERROR_BROKEN_PIPE) {
 				std::stringstream msg{};
 				msg << "WriteFile: " << GetLastError();
@@ -387,9 +399,15 @@ static void *write_pipe_thread(void *data) {
 			break;
 		}
 #else
-		outfife << (char*)&read_buf[0], read_buf.size() * sizeof(uint8_t);
+		outfife.write(reinterpret_cast<char*>(read_buf.data()), read_size);
 #endif
-		// printf("numWritten=%lld \n", numWritten);
+		// FF_BLOG(LOG_INFO, "numWritten=%lld", numWritten);
+	}
+
+	{
+		std::error_code ec;
+		std::filesystem::remove(s->pipe_path, ec);
+		(void)ec;
 	}
 
 	return nullptr;
@@ -404,19 +422,19 @@ static void streamlink_source_open(struct streamlink_source *s)
 			s,
 			get_frame,
 			preload_frame,
-        	seek_frame,
+			seek_frame,
 			get_audio,
 			media_stopped,
 			s->pipe_path.c_str(),
-        	nullptr,
-        	nullptr,
+			nullptr,
+			nullptr,
 			0,
 			100,
 			VIDEO_RANGE_DEFAULT,
 			false,
 			s->is_hw_decoding,
 			false,
-		    false,
+			false,
 		};
 		if (streamlink_open(s) == 0) {
 			if (os_event_init(&s->stop_signal, OS_EVENT_TYPE_MANUAL) != 0) {
@@ -424,10 +442,15 @@ static void streamlink_source_open(struct streamlink_source *s)
 				return;
 			}
 
+			FF_BLOG(LOG_INFO, ">>>>>>>>>>>>>>>> >>>>>>>>> s->stop_signal initialized");
+
 			if (pthread_create(&s->thread, nullptr, write_pipe_thread, s) != 0) {
 				streamlink_source_destroy(s);
 				return;
 			}
+
+			FF_BLOG(LOG_INFO, ">>>>>>>>>>>>>>>> >>>>>>>>> s->write_pipe_thread initialized");
+
 			s->media_valid = mp_media_init(&s->media, &info);
 		}
 		else s->media_valid = false; // streamlink FAILED
@@ -601,9 +624,19 @@ static void streamlink_source_destroy(void *data)
 	if (s->media_valid)
 		mp_media_free(&s->media);
 
-	os_event_signal(s->stop_signal);
-	pthread_join(s->thread, NULL);
-	os_event_destroy(s->stop_signal);
+	if (s->stop_signal) {
+	    os_event_signal(s->stop_signal);
+	}
+#ifdef _WIN32
+	if (s->thread.p) {
+#else
+	if (s->thread) {
+#endif
+	    pthread_join(s->thread, NULL);
+	}
+	if (s->stop_signal) {
+	    os_event_destroy(s->stop_signal);
+	}
 
 	streamlink_close(s);
 	bfree(s->live_room_url);

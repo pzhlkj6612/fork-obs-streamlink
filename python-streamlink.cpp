@@ -97,12 +97,17 @@ namespace streamlink {
         };
         if (!Py_IsInitialized())
         {
+            blog(LOG_INFO, "initliazing Python...");
             // TODO make this configurable via properties.
             std::string python_path{R"(A:\obs-debug-install\data\obs-plugins\obs-streamlink\-1Python38)"};
             auto widstr = std::wstring(python_path.begin(), python_path.end());
             Py_SetPythonHome(widstr.c_str());
             Py_Initialize();
         }
+
+        PyGILState_Ensure();
+        PyRun_SimpleString("import sys; print(f'sys.version = {sys.version}'); print(f'sys.path = {sys.path}');");
+        PyRun_SimpleString("import site; print(site.getsitepackages());");
 
         module = PyImport_ImportModule("streamlink");
         if (module == nullptr) return FireInitializationFailure();
@@ -168,7 +173,6 @@ namespace streamlink {
         PyBytes_AsStringAndSize(result, &buf1, &readLen);
         std::memcpy(buf, buf1, readLen > len ? len : readLen);
 
-        if (readLen == 0) throw stream_ended();
         return static_cast<int>(readLen);
     }
     void Stream::Close()

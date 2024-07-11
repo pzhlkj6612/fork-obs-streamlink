@@ -73,7 +73,6 @@ namespace streamlink {
         { }
     };
     class invalid_underlying_object : public std::exception {};
-    class stream_ended : public std::exception {};
 
     class Stream : public PyObjectHolder
     {
