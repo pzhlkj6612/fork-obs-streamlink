@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}")
 
-find_package(Python 3.8...3.11 REQUIRED COMPONENTS Development.Module)
+find_package(Python 3.8...3.11 REQUIRED COMPONENTS Development)
 find_package(FFmpeg REQUIRED COMPONENTS swscale)
 
 
@@ -56,15 +56,37 @@ if (MSVC)
 endif ()
 
 if (WIN32)
-    install(TARGETS ${CMAKE_PROJECT_NAME} RUNTIME DESTINATION "obs-plugins/64bit")
-    install(FILES $<TARGET_PDB_FILE:${CMAKE_PROJECT_NAME}> DESTINATION "obs-plugins/64bit" OPTIONAL)
-    install(DIRECTORY ${CMAKE_SOURCE_DIR}/data/ DESTINATION "data/obs-plugins/obs-streamlink")
+    install(
+            TARGETS ${CMAKE_PROJECT_NAME}
+            LIBRARY DESTINATION "obs-plugins/64bit"
+            RUNTIME DESTINATION "obs-plugins/64bit"
+    )
+    install(
+            FILES "$<TARGET_PDB_FILE:${CMAKE_PROJECT_NAME}>"
+            CONFIGURATIONS Debug Release RelWithDebInfo
+            DESTINATION "obs-plugins/64bit"
+            OPTIONAL
+    )
+    install(
+            DIRECTORY ${CMAKE_SOURCE_DIR}/data/
+            DESTINATION "data/obs-plugins/obs-streamlink"
+    )
 elseif (APPLE)
     # TODO
 else ()
+    include(GNUInstallDirs)
     # https://github.com/obsproject/obs-plugintemplate/blob/e3688b7491c52ef6e37ac59daa93e7cf4d9e2b28/cmake/linux/helpers.cmake
-    install(TARGETS ${CMAKE_PROJECT_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_LIBDIR}/obs-plugins")
-    install(DIRECTORY ${CMAKE_SOURCE_DIR}/data/ DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/obs/obs-plugins/obs-streamlink")
+    install(
+            TARGETS ${CMAKE_PROJECT_NAME}
+            LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}/obs-plugins"
+    )
+    install(
+            DIRECTORY ${CMAKE_SOURCE_DIR}/data/
+            DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/obs/obs-plugins/obs-streamlink"
+    )
+    set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES
+            INSTALL_RPATH "$ORIGIN/.."
+    )
 endif()
 
 set(OBS_STUDIO_BUILD_PATH "${CMAKE_BINARY_DIR}/obs-studio-build")
@@ -82,7 +104,15 @@ ExternalProject_Add(
         CMAKE_ARGS
         "-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
         "-DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH_ALT_SEP}"
-        BUILD_COMMAND "${CMAKE_COMMAND}" --build <BINARY_DIR> --config $<CONFIG> --target w32-pthreads libobs obs-frontend-api
+        -DENABLE_BROWSER=OFF
+        -DENABLE_AJA=0
+        -DENABLE_WEBRTC=0
+        -DQT_VERSION=6
+        -DENABLE_SCRIPTING=OFF
+        -DENABLE_PLUGINS=OFF
+        -DENABLE_UPDATER=OFF
+        -DENABLE_DECKLINK=OFF
+        BUILD_COMMAND "${CMAKE_COMMAND}" --build <BINARY_DIR> --config $<CONFIG> --target libobs obs-frontend-api
         INSTALL_COMMAND ""
 )
 
