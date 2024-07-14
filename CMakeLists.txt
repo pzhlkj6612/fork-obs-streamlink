@@ -102,18 +102,22 @@ ExternalProject_Add(
         INSTALL_DIR ""
         LIST_SEPARATOR "|"
         CMAKE_ARGS
-        "-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
-        "-DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH_ALT_SEP}"
-        -DENABLE_BROWSER=OFF
-        -DENABLE_AJA=0
-        -DENABLE_WEBRTC=0
-        -DQT_VERSION=6
-        -DENABLE_SCRIPTING=OFF
-        -DENABLE_PLUGINS=OFF
-        -DENABLE_UPDATER=OFF
-        -DENABLE_DECKLINK=OFF
+            "-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
+            "-DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH_ALT_SEP}"
+            -DENABLE_BROWSER=OFF
+            -DENABLE_AJA=0
+            -DENABLE_WEBRTC=0
+            -DQT_VERSION=6
+            -DENABLE_SCRIPTING=OFF
+            -DENABLE_PLUGINS=OFF
+            -DENABLE_UPDATER=OFF
+            -DENABLE_DECKLINK=OFF
         BUILD_COMMAND "${CMAKE_COMMAND}" --build <BINARY_DIR> --config $<CONFIG> --target libobs obs-frontend-api
         INSTALL_COMMAND ""
+        BUILD_BYPRODUCTS
+            # Ninja only: https://stackoverflow.com/questions/40314785/linking-against-an-externalproject-add-dependency-in-cmake
+            "${OBS_STUDIO_BUILD_PATH}/rundir/$<CONFIG>/lib/libobs.so"
+            "${OBS_STUDIO_BUILD_PATH}/rundir/$<CONFIG>/lib/libobs-frontend-api.so"
 )
 
 if (MSVC)
