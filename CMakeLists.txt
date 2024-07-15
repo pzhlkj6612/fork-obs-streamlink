@@ -101,55 +101,41 @@ if (WIN32)
     add_dependencies(w32-pthreads obs-studio-source)
     target_compile_definitions(w32-pthreads INTERFACE "-DHAVE_STRUCT_TIMESPEC=1")
     set_target_properties(w32-pthreads PROPERTIES
-            INTERFACE_INCLUDE_DIRECTORIES "${OBS_STUDIO_SOURCE_PATH}/deps/w32-pthreads"
-            IMPORTED_IMPLIB_DEBUG "${OBS_STUDIO_BUILD_PATH}/deps/w32-pthreads/Debug/w32-pthreads.lib"
-            IMPORTED_IMPLIB_RELEASE "${OBS_STUDIO_BUILD_PATH}/deps/w32-pthreads/Release/w32-pthreads.lib"
-            IMPORTED_IMPLIB_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/deps/w32-pthreads/MinSizeRel/w32-pthreads.lib"
-            IMPORTED_IMPLIB_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/deps/w32-pthreads/RelWithDebInfo/w32-pthreads.lib"
-            IMPORTED_LOCATION_DEBUG "${OBS_STUDIO_BUILD_PATH}/rundir/Debug/bin/64bit/w32-pthreads.dll"
-            IMPORTED_LOCATION_RELEASE "${OBS_STUDIO_BUILD_PATH}/rundir/Release/bin/64bit/w32-pthreads.dll"
-            IMPORTED_LOCATION_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/rundir/MinSizeRel/bin/64bit/w32-pthreads.dll"
-            IMPORTED_LOCATION_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/rundir/RelWithDebInfo/bin/64bit/w32-pthreads.dll")
+            INTERFACE_INCLUDE_DIRECTORIES "${OBS_STUDIO_SOURCE_PATH}/deps/w32-pthreads")
+    foreach(CONFIG_TYPE ${CMAKE_CONFIGURATION_TYPES})
+        string(TOUPPER ${CONFIG_TYPE} CONFIG_TYPE_UPPER)
+        set_target_properties(w32-pthreads PROPERTIES
+                IMPORTED_IMPLIB_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/deps/w32-pthreads/${CONFIG_TYPE}/w32-pthreads.lib"
+                IMPORTED_LOCATION_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/rundir/${CONFIG_TYPE}/bin/64bit/w32-pthreads.dll")
+    endforeach ()
 endif ()
 
 add_dependencies(libobs obs-studio-source)
 set_target_properties(libobs PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${OBS_STUDIO_SOURCE_PATH}/libobs")
-if (WIN32)
-    set_target_properties(libobs PROPERTIES
-            IMPORTED_IMPLIB_DEBUG "${OBS_STUDIO_BUILD_PATH}/libobs/Debug/obs.lib"
-            IMPORTED_IMPLIB_RELEASE "${OBS_STUDIO_BUILD_PATH}/libobs/Release/obs.lib"
-            IMPORTED_IMPLIB_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/libobs/MinSizeRel/obs.lib"
-            IMPORTED_IMPLIB_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/libobs/RelWithDebInfo/obs.lib"
-            IMPORTED_LOCATION_DEBUG "${OBS_STUDIO_BUILD_PATH}/rundir/Debug/bin/64bit/obs.dll"
-            IMPORTED_LOCATION_RELEASE "${OBS_STUDIO_BUILD_PATH}/rundir/Release/bin/64bit/obs.dll"
-            IMPORTED_LOCATION_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/rundir/MinSizeRel/bin/64bit/obs.dll"
-            IMPORTED_LOCATION_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/rundir/RelWithDebInfo/bin/64bit/obs.dll")
-else ()
-    set_target_properties(libobs PROPERTIES
-            IMPORTED_LOCATION_DEBUG "${OBS_STUDIO_BUILD_PATH}/rundir/Debug/lib/libobs.so"
-            IMPORTED_LOCATION_RELEASE "${OBS_STUDIO_BUILD_PATH}/rundir/Release/lib/libobs.so"
-            IMPORTED_LOCATION_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/rundir/MinSizeRel/lib/libobs.so"
-            IMPORTED_LOCATION_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/rundir/RelWithDebInfo/lib/libobs.so")
-endif ()
+foreach(CONFIG_TYPE ${CMAKE_CONFIGURATION_TYPES})
+    string(TOUPPER ${CONFIG_TYPE} CONFIG_TYPE_UPPER)
+    if (WIN32)
+        set_target_properties(libobs PROPERTIES
+                IMPORTED_IMPLIB_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/libobs/${CONFIG_TYPE}/obs.lib"
+                IMPORTED_LOCATION_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/rundir/${CONFIG_TYPE}/bin/64bit/obs.dll")
+    else ()
+        set_target_properties(libobs PROPERTIES
+                IMPORTED_LOCATION_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/rundir/${CONFIG_TYPE}/lib/libobs.so")
+    endif ()
+endforeach ()
 
 add_dependencies(libobs-frontend-api obs-studio-source)
 set_target_properties(libobs-frontend-api PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${OBS_STUDIO_SOURCE_PATH}/UI/obs-frontend-api")
-if (WIN32)
-    set_target_properties(libobs-frontend-api PROPERTIES
-            IMPORTED_IMPLIB_DEBUG "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/Debug/obs-frontend-api.lib"
-            IMPORTED_IMPLIB_RELEASE "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/Release/obs-frontend-api.lib"
-            IMPORTED_IMPLIB_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/MinSizeRel/obs-frontend-api.lib"
-            IMPORTED_IMPLIB_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/RelWithDebInfo/obs-frontend-api.lib"
-            IMPORTED_LOCATION_DEBUG "${OBS_STUDIO_BUILD_PATH}/rundir/Debug/bin/64bit/obs-frontend-api.dll"
-            IMPORTED_LOCATION_RELEASE "${OBS_STUDIO_BUILD_PATH}/rundir/Release/bin/64bit/obs-frontend-api.dll"
-            IMPORTED_LOCATION_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/rundir/MinSizeRel/bin/64bit/obs-frontend-api.dll"
-            IMPORTED_LOCATION_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/rundir/RelWithDebInfo/bin/64bit/obs-frontend-api.dll")
-else ()
-    set_target_properties(libobs-frontend-api PROPERTIES
-            IMPORTED_LOCATION_DEBUG "${OBS_STUDIO_BUILD_PATH}/rundir/Debug/lib/libobs-frontend-api.so"
-            IMPORTED_LOCATION_RELEASE "${OBS_STUDIO_BUILD_PATH}/rundir/Release/lib/libobs-frontend-api.so"
-            IMPORTED_LOCATION_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/rundir/MinSizeRel/lib/libobs-frontend-api.so"
-            IMPORTED_LOCATION_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/rundir/RelWithDebInfo/lib/libobs-frontend-api.so")
-endif ()
+foreach(CONFIG_TYPE ${CMAKE_CONFIGURATION_TYPES})
+    string(TOUPPER ${CONFIG_TYPE} CONFIG_TYPE_UPPER)
+    if (WIN32)
+        set_target_properties(libobs-frontend-api PROPERTIES
+                IMPORTED_IMPLIB_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/${CONFIG_TYPE}/obs-frontend-api.lib"
+                IMPORTED_LOCATION_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/rundir/${CONFIG_TYPE}/bin/64bit/obs-frontend-api.dll")
+    else ()
+        set_target_properties(libobs-frontend-api PROPERTIES
+                IMPORTED_LOCATION_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/rundir/${CONFIG_TYPE}/lib/libobs-frontend-api.so")
+    endif ()
+endforeach ()
