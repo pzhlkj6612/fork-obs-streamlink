@@ -91,8 +91,7 @@ endif()
 
 set(OBS_STUDIO_BUILD_PATH "${CMAKE_BINARY_DIR}/obs-studio-build")
 
-# Depending on Package Config file as External Project - Code - CMake Discourse
-#   https://discourse.cmake.org/t/1501
+# https://discourse.cmake.org/t/depending-on-package-config-file-as-external-project/1501
 list(JOIN CMAKE_PREFIX_PATH "|" CMAKE_PREFIX_PATH_ALT_SEP)
 include(ExternalProject)
 ExternalProject_Add(
@@ -113,11 +112,11 @@ ExternalProject_Add(
             -DENABLE_UPDATER=OFF
             -DENABLE_DECKLINK=OFF
         BUILD_COMMAND "${CMAKE_COMMAND}" --build <BINARY_DIR> --config $<CONFIG> --target libobs obs-frontend-api
-        INSTALL_COMMAND ""
         BUILD_BYPRODUCTS
             # Ninja only: https://stackoverflow.com/questions/40314785/linking-against-an-externalproject-add-dependency-in-cmake
             "${OBS_STUDIO_BUILD_PATH}/rundir/$<CONFIG>/lib/libobs.so"
             "${OBS_STUDIO_BUILD_PATH}/rundir/$<CONFIG>/lib/libobs-frontend-api.so"
+        INSTALL_COMMAND ""
 )
 
 if (MSVC)
@@ -138,26 +137,48 @@ endif ()
 
 set_target_properties(libobs PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${OBS_STUDIO_SOURCE_PATH}/libobs"
-        IMPORTED_IMPLIB_DEBUG "${OBS_STUDIO_BUILD_PATH}/libobs/Debug/obs.lib"
-        IMPORTED_IMPLIB_RELEASE "${OBS_STUDIO_BUILD_PATH}/libobs/Release/obs.lib"
-        IMPORTED_IMPLIB_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/libobs/MinSizeRel/obs.lib"
-        IMPORTED_IMPLIB_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/libobs/RelWithDebInfo/obs.lib"
-        IMPORTED_LOCATION_DEBUG "${OBS_STUDIO_BUILD_PATH}/rundir/Debug/bin/64bit/obs.dll"
-        IMPORTED_LOCATION_RELEASE "${OBS_STUDIO_BUILD_PATH}/rundir/Release/bin/64bit/obs.dll"
-        IMPORTED_LOCATION_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/rundir/MinSizeRel/bin/64bit/obs.dll"
-        IMPORTED_LOCATION_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/rundir/RelWithDebInfo/bin/64bit/obs.dll"
 )
+if (MSVC)
+    set_target_properties(libobs PROPERTIES
+            IMPORTED_IMPLIB_DEBUG "${OBS_STUDIO_BUILD_PATH}/libobs/Debug/obs.lib"
+            IMPORTED_IMPLIB_RELEASE "${OBS_STUDIO_BUILD_PATH}/libobs/Release/obs.lib"
+            IMPORTED_IMPLIB_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/libobs/MinSizeRel/obs.lib"
+            IMPORTED_IMPLIB_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/libobs/RelWithDebInfo/obs.lib"
+            IMPORTED_LOCATION_DEBUG "${OBS_STUDIO_BUILD_PATH}/rundir/Debug/bin/64bit/obs.dll"
+            IMPORTED_LOCATION_RELEASE "${OBS_STUDIO_BUILD_PATH}/rundir/Release/bin/64bit/obs.dll"
+            IMPORTED_LOCATION_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/rundir/MinSizeRel/bin/64bit/obs.dll"
+            IMPORTED_LOCATION_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/rundir/RelWithDebInfo/bin/64bit/obs.dll"
+    )
+else ()
+    set_target_properties(libobs PROPERTIES
+            IMPORTED_LOCATION_DEBUG "${OBS_STUDIO_BUILD_PATH}/rundir/Debug/lib/libobs.so"
+            IMPORTED_LOCATION_RELEASE "${OBS_STUDIO_BUILD_PATH}/rundir/Release/lib/libobs.so"
+            IMPORTED_LOCATION_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/rundir/MinSizeRel/lib/libobs.so"
+            IMPORTED_LOCATION_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/rundir/RelWithDebInfo/lib/libobs.so"
+    )
+endif ()
 add_dependencies(libobs obs-studio-source)
 
 set_target_properties(libobs-frontend-api PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${OBS_STUDIO_SOURCE_PATH}/UI/obs-frontend-api"
-        IMPORTED_IMPLIB_DEBUG "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/Debug/obs-frontend-api.lib"
-        IMPORTED_IMPLIB_RELEASE "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/Release/obs-frontend-api.lib"
-        IMPORTED_IMPLIB_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/MinSizeRel/obs-frontend-api.lib"
-        IMPORTED_IMPLIB_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/RelWithDebInfo/obs-frontend-api.lib"
-        IMPORTED_LOCATION_DEBUG "${OBS_STUDIO_BUILD_PATH}/rundir/Debug/bin/64bit/obs-frontend-api.dll"
-        IMPORTED_LOCATION_RELEASE "${OBS_STUDIO_BUILD_PATH}/rundir/Release/bin/64bit/obs-frontend-api.dll"
-        IMPORTED_LOCATION_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/rundir/MinSizeRel/bin/64bit/obs-frontend-api.dll"
-        IMPORTED_LOCATION_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/rundir/RelWithDebInfo/bin/64bit/obs-frontend-api.dll"
 )
+if (MSVC)
+    set_target_properties(libobs-frontend-api PROPERTIES
+            IMPORTED_IMPLIB_DEBUG "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/Debug/obs-frontend-api.lib"
+            IMPORTED_IMPLIB_RELEASE "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/Release/obs-frontend-api.lib"
+            IMPORTED_IMPLIB_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/MinSizeRel/obs-frontend-api.lib"
+            IMPORTED_IMPLIB_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/RelWithDebInfo/obs-frontend-api.lib"
+            IMPORTED_LOCATION_DEBUG "${OBS_STUDIO_BUILD_PATH}/rundir/Debug/bin/64bit/obs-frontend-api.dll"
+            IMPORTED_LOCATION_RELEASE "${OBS_STUDIO_BUILD_PATH}/rundir/Release/bin/64bit/obs-frontend-api.dll"
+            IMPORTED_LOCATION_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/rundir/MinSizeRel/bin/64bit/obs-frontend-api.dll"
+            IMPORTED_LOCATION_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/rundir/RelWithDebInfo/bin/64bit/obs-frontend-api.dll"
+    )
+else ()
+    set_target_properties(libobs-frontend-api PROPERTIES
+            IMPORTED_LOCATION_DEBUG "${OBS_STUDIO_BUILD_PATH}/rundir/Debug/lib/libobs-frontend-api.so"
+            IMPORTED_LOCATION_RELEASE "${OBS_STUDIO_BUILD_PATH}/rundir/Release/lib/libobs-frontend-api.so"
+            IMPORTED_LOCATION_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/rundir/MinSizeRel/lib/libobs-frontend-api.so"
+            IMPORTED_LOCATION_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/rundir/RelWithDebInfo/lib/libobs-frontend-api.so"
+    )
+endif ()
 add_dependencies(libobs-frontend-api obs-studio-source)
