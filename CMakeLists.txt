@@ -26,66 +26,47 @@ add_library(libobs-frontend-api SHARED IMPORTED)
 add_library(${CMAKE_PROJECT_NAME} SHARED
         obs-streamlink.cpp
         python-streamlink.cpp
-        streamlink-source.cpp
-)
+        streamlink-source.cpp)
 if (WIN32)
     target_sources(${CMAKE_PROJECT_NAME} PRIVATE streamlink-delayload.cpp)
 endif ()
-target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
-        "deps/"
-)
-target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE
-        media-playback Python::Module libobs libobs-frontend-api
-)
+target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE "deps/")
+target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE media-playback Python::Module libobs libobs-frontend-api)
 if (WIN32)
-    target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE
-            w32-pthreads
-    )
+    target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE w32-pthreads)
 endif ()
-target_compile_options(${CMAKE_PROJECT_NAME}
-        PRIVATE "$<$<C_COMPILER_ID:MSVC>:/utf-8>"
-        PRIVATE "$<$<CXX_COMPILER_ID:MSVC>:/utf-8>"
-)
+# https://stackoverflow.com/questions/47690822/possible-to-force-cmake-msvc-to-use-utf-8-encoding-for-source-files-without-a-bo
+target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE "$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
 
 if (WIN32)
     get_filename_component(python-stable-abi-lib-filename ${Python_RUNTIME_LIBRARY} NAME)
-    target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
-            "/DELAYLOAD:${python-stable-abi-lib-filename}"
-    )
+    target_link_options(${CMAKE_PROJECT_NAME} PRIVATE "/DELAYLOAD:${python-stable-abi-lib-filename}")
 endif ()
 
 if (WIN32)
-    install(
-            TARGETS ${CMAKE_PROJECT_NAME}
+    install(TARGETS ${CMAKE_PROJECT_NAME}
             LIBRARY DESTINATION "obs-plugins/64bit"
-            RUNTIME DESTINATION "obs-plugins/64bit"
-    )
-    install(
-            FILES "$<TARGET_PDB_FILE:${CMAKE_PROJECT_NAME}>"
+            RUNTIME DESTINATION "obs-plugins/64bit")
+    install(FILES "$<TARGET_PDB_FILE:${CMAKE_PROJECT_NAME}>"
             CONFIGURATIONS Debug Release RelWithDebInfo
             DESTINATION "obs-plugins/64bit"
-            OPTIONAL
-    )
-    install(
-            DIRECTORY ${CMAKE_SOURCE_DIR}/data/
-            DESTINATION "data/obs-plugins/obs-streamlink"
-    )
+            OPTIONAL)
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/data/
+            DESTINATION "data/obs-plugins/obs-streamlink")
 elseif (APPLE)
     # TODO
 else ()
+    # https://github.com/obsproject/obs-plugintemplate/blob/e3688b7491c52ef6e37ac59daa93e7cf4d9e2b28/cmake/linux/defaults.cmake#L10
     include(GNUInstallDirs)
-    # https://github.com/obsproject/obs-plugintemplate/blob/e3688b7491c52ef6e37ac59daa93e7cf4d9e2b28/cmake/linux/helpers.cmake
-    install(
-            TARGETS ${CMAKE_PROJECT_NAME}
-            LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}/obs-plugins"
-    )
-    install(
-            DIRECTORY ${CMAKE_SOURCE_DIR}/data/
-            DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/obs/obs-plugins/obs-streamlink"
-    )
+    # https://github.com/obsproject/obs-plugintemplate/blob/e3688b7491c52ef6e37ac59daa93e7cf4d9e2b28/cmake/linux/helpers.cmake#L27-L30
+    install(TARGETS ${CMAKE_PROJECT_NAME}
+            LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}/obs-plugins")
+    # https://github.com/obsproject/obs-plugintemplate/blob/e3688b7491c52ef6e37ac59daa93e7cf4d9e2b28/cmake/linux/helpers.cmake#L60-L63
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/data/
+            DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/obs/obs-plugins/obs-streamlink")
+    # to be able to find libobs.so and libobs-frontend-api.so
     set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES
-            INSTALL_RPATH "$ORIGIN/.."
-    )
+            INSTALL_RPATH "$ORIGIN/..")
 endif()
 
 set(OBS_STUDIO_BUILD_PATH "${CMAKE_BINARY_DIR}/obs-studio-build")
@@ -93,8 +74,7 @@ set(OBS_STUDIO_BUILD_PATH "${CMAKE_BINARY_DIR}/obs-studio-build")
 # https://discourse.cmake.org/t/depending-on-package-config-file-as-external-project/1501
 list(JOIN CMAKE_PREFIX_PATH "|" CMAKE_PREFIX_PATH_ALT_SEP)
 include(ExternalProject)
-ExternalProject_Add(
-        obs-studio-source
+ExternalProject_Add(obs-studio-source
         SOURCE_DIR "${OBS_STUDIO_SOURCE_PATH}"
         BINARY_DIR "${OBS_STUDIO_BUILD_PATH}"
         INSTALL_DIR ""
@@ -115,10 +95,10 @@ ExternalProject_Add(
             # Ninja only: https://stackoverflow.com/questions/40314785/linking-against-an-externalproject-add-dependency-in-cmake
             "${OBS_STUDIO_BUILD_PATH}/rundir/$<CONFIG>/lib/libobs.so"
             "${OBS_STUDIO_BUILD_PATH}/rundir/$<CONFIG>/lib/libobs-frontend-api.so"
-        INSTALL_COMMAND ""
-)
+        INSTALL_COMMAND "")
 
 if (WIN32)
+    add_dependencies(w32-pthreads obs-studio-source)
     target_compile_definitions(w32-pthreads INTERFACE "-DHAVE_STRUCT_TIMESPEC=1")
     set_target_properties(w32-pthreads PROPERTIES
             INTERFACE_INCLUDE_DIRECTORIES "${OBS_STUDIO_SOURCE_PATH}/deps/w32-pthreads"
@@ -129,14 +109,12 @@ if (WIN32)
             IMPORTED_LOCATION_DEBUG "${OBS_STUDIO_BUILD_PATH}/rundir/Debug/bin/64bit/w32-pthreads.dll"
             IMPORTED_LOCATION_RELEASE "${OBS_STUDIO_BUILD_PATH}/rundir/Release/bin/64bit/w32-pthreads.dll"
             IMPORTED_LOCATION_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/rundir/MinSizeRel/bin/64bit/w32-pthreads.dll"
-            IMPORTED_LOCATION_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/rundir/RelWithDebInfo/bin/64bit/w32-pthreads.dll"
-    )
-    add_dependencies(w32-pthreads obs-studio-source)
+            IMPORTED_LOCATION_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/rundir/RelWithDebInfo/bin/64bit/w32-pthreads.dll")
 endif ()
 
+add_dependencies(libobs obs-studio-source)
 set_target_properties(libobs PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES "${OBS_STUDIO_SOURCE_PATH}/libobs"
-)
+        INTERFACE_INCLUDE_DIRECTORIES "${OBS_STUDIO_SOURCE_PATH}/libobs")
 if (WIN32)
     set_target_properties(libobs PROPERTIES
             IMPORTED_IMPLIB_DEBUG "${OBS_STUDIO_BUILD_PATH}/libobs/Debug/obs.lib"
@@ -146,21 +124,18 @@ if (WIN32)
             IMPORTED_LOCATION_DEBUG "${OBS_STUDIO_BUILD_PATH}/rundir/Debug/bin/64bit/obs.dll"
             IMPORTED_LOCATION_RELEASE "${OBS_STUDIO_BUILD_PATH}/rundir/Release/bin/64bit/obs.dll"
             IMPORTED_LOCATION_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/rundir/MinSizeRel/bin/64bit/obs.dll"
-            IMPORTED_LOCATION_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/rundir/RelWithDebInfo/bin/64bit/obs.dll"
-    )
+            IMPORTED_LOCATION_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/rundir/RelWithDebInfo/bin/64bit/obs.dll")
 else ()
     set_target_properties(libobs PROPERTIES
             IMPORTED_LOCATION_DEBUG "${OBS_STUDIO_BUILD_PATH}/rundir/Debug/lib/libobs.so"
             IMPORTED_LOCATION_RELEASE "${OBS_STUDIO_BUILD_PATH}/rundir/Release/lib/libobs.so"
             IMPORTED_LOCATION_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/rundir/MinSizeRel/lib/libobs.so"
-            IMPORTED_LOCATION_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/rundir/RelWithDebInfo/lib/libobs.so"
-    )
+            IMPORTED_LOCATION_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/rundir/RelWithDebInfo/lib/libobs.so")
 endif ()
-add_dependencies(libobs obs-studio-source)
 
+add_dependencies(libobs-frontend-api obs-studio-source)
 set_target_properties(libobs-frontend-api PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES "${OBS_STUDIO_SOURCE_PATH}/UI/obs-frontend-api"
-)
+        INTERFACE_INCLUDE_DIRECTORIES "${OBS_STUDIO_SOURCE_PATH}/UI/obs-frontend-api")
 if (WIN32)
     set_target_properties(libobs-frontend-api PROPERTIES
             IMPORTED_IMPLIB_DEBUG "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/Debug/obs-frontend-api.lib"
@@ -170,14 +145,11 @@ if (WIN32)
             IMPORTED_LOCATION_DEBUG "${OBS_STUDIO_BUILD_PATH}/rundir/Debug/bin/64bit/obs-frontend-api.dll"
             IMPORTED_LOCATION_RELEASE "${OBS_STUDIO_BUILD_PATH}/rundir/Release/bin/64bit/obs-frontend-api.dll"
             IMPORTED_LOCATION_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/rundir/MinSizeRel/bin/64bit/obs-frontend-api.dll"
-            IMPORTED_LOCATION_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/rundir/RelWithDebInfo/bin/64bit/obs-frontend-api.dll"
-    )
+            IMPORTED_LOCATION_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/rundir/RelWithDebInfo/bin/64bit/obs-frontend-api.dll")
 else ()
     set_target_properties(libobs-frontend-api PROPERTIES
             IMPORTED_LOCATION_DEBUG "${OBS_STUDIO_BUILD_PATH}/rundir/Debug/lib/libobs-frontend-api.so"
             IMPORTED_LOCATION_RELEASE "${OBS_STUDIO_BUILD_PATH}/rundir/Release/lib/libobs-frontend-api.so"
             IMPORTED_LOCATION_MINSIZEREL "${OBS_STUDIO_BUILD_PATH}/rundir/MinSizeRel/lib/libobs-frontend-api.so"
-            IMPORTED_LOCATION_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/rundir/RelWithDebInfo/lib/libobs-frontend-api.so"
-    )
+            IMPORTED_LOCATION_RELWITHDEBINFO "${OBS_STUDIO_BUILD_PATH}/rundir/RelWithDebInfo/lib/libobs-frontend-api.so")
 endif ()
-add_dependencies(libobs-frontend-api obs-studio-source)
