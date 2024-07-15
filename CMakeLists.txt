@@ -93,8 +93,8 @@ ExternalProject_Add(obs-studio-source
         BUILD_COMMAND "${CMAKE_COMMAND}" --build <BINARY_DIR> --config $<CONFIG> --target libobs obs-frontend-api
         BUILD_BYPRODUCTS
             # Ninja only: https://stackoverflow.com/questions/40314785/linking-against-an-externalproject-add-dependency-in-cmake
-            "${OBS_STUDIO_BUILD_PATH}/rundir/$<CONFIG>/lib/libobs.so"
-            "${OBS_STUDIO_BUILD_PATH}/rundir/$<CONFIG>/lib/libobs-frontend-api.so"
+            "${OBS_STUDIO_BUILD_PATH}/libobs/libobs.so"
+            "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/libobs-frontend-api.so"
         INSTALL_COMMAND "")
 
 if (WIN32)
@@ -106,36 +106,36 @@ if (WIN32)
         string(TOUPPER ${CONFIG_TYPE} CONFIG_TYPE_UPPER)
         set_target_properties(w32-pthreads PROPERTIES
                 IMPORTED_IMPLIB_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/deps/w32-pthreads/${CONFIG_TYPE}/w32-pthreads.lib"
-                IMPORTED_LOCATION_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/rundir/${CONFIG_TYPE}/bin/64bit/w32-pthreads.dll")
+                IMPORTED_LOCATION_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/deps/w32-pthreads/${CONFIG_TYPE}/w32-pthreads.dll")
     endforeach ()
 endif ()
 
 add_dependencies(libobs obs-studio-source)
 set_target_properties(libobs PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${OBS_STUDIO_SOURCE_PATH}/libobs")
-foreach(CONFIG_TYPE ${CMAKE_CONFIGURATION_TYPES})
-    string(TOUPPER ${CONFIG_TYPE} CONFIG_TYPE_UPPER)
-    if (WIN32)
+if (WIN32)
+    foreach(CONFIG_TYPE ${CMAKE_CONFIGURATION_TYPES})
+        string(TOUPPER ${CONFIG_TYPE} CONFIG_TYPE_UPPER)
         set_target_properties(libobs PROPERTIES
                 IMPORTED_IMPLIB_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/libobs/${CONFIG_TYPE}/obs.lib"
-                IMPORTED_LOCATION_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/rundir/${CONFIG_TYPE}/bin/64bit/obs.dll")
-    else ()
-        set_target_properties(libobs PROPERTIES
-                IMPORTED_LOCATION_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/rundir/${CONFIG_TYPE}/lib/libobs.so")
-    endif ()
-endforeach ()
+                IMPORTED_LOCATION_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/libobs/${CONFIG_TYPE}/obs.dll")
+    endforeach ()
+else ()
+    set_target_properties(libobs PROPERTIES
+            IMPORTED_LOCATION "${OBS_STUDIO_BUILD_PATH}/libobs/libobs.so")
+endif ()
 
 add_dependencies(libobs-frontend-api obs-studio-source)
 set_target_properties(libobs-frontend-api PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${OBS_STUDIO_SOURCE_PATH}/UI/obs-frontend-api")
-foreach(CONFIG_TYPE ${CMAKE_CONFIGURATION_TYPES})
-    string(TOUPPER ${CONFIG_TYPE} CONFIG_TYPE_UPPER)
-    if (WIN32)
+if (WIN32)
+    foreach(CONFIG_TYPE ${CMAKE_CONFIGURATION_TYPES})
+        string(TOUPPER ${CONFIG_TYPE} CONFIG_TYPE_UPPER)
         set_target_properties(libobs-frontend-api PROPERTIES
                 IMPORTED_IMPLIB_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/${CONFIG_TYPE}/obs-frontend-api.lib"
-                IMPORTED_LOCATION_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/rundir/${CONFIG_TYPE}/bin/64bit/obs-frontend-api.dll")
-    else ()
-        set_target_properties(libobs-frontend-api PROPERTIES
-                IMPORTED_LOCATION_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/rundir/${CONFIG_TYPE}/lib/libobs-frontend-api.so")
-    endif ()
-endforeach ()
+                IMPORTED_LOCATION_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/${CONFIG_TYPE}/obs-frontend-api.dll")
+    endforeach ()
+else ()
+    set_target_properties(libobs-frontend-api PROPERTIES
+        IMPORTED_LOCATION "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/libobs-frontend-api.so")
+endif ()
