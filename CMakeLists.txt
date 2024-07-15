@@ -17,7 +17,7 @@ endif ()
 add_subdirectory("${OBS_STUDIO_SOURCE_PATH}/deps/media-playback" deps/obs-studio-media-playback EXCLUDE_FROM_ALL)
 target_link_libraries(media-playback INTERFACE ${FFMPEG_LIBRARIES})
 
-if (MSVC)
+if (WIN32)
     add_library(w32-pthreads SHARED IMPORTED)
 endif ()
 add_library(libobs SHARED IMPORTED)
@@ -28,17 +28,16 @@ add_library(${CMAKE_PROJECT_NAME} SHARED
         python-streamlink.cpp
         streamlink-source.cpp
 )
-if (MSVC)
+if (WIN32)
     target_sources(${CMAKE_PROJECT_NAME} PRIVATE streamlink-delayload.cpp)
 endif ()
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
         "deps/"
 )
 target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE
-        Python::Module media-playback
-        libobs libobs-frontend-api
+        media-playback Python::Module libobs libobs-frontend-api
 )
-if (MSVC)
+if (WIN32)
     target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE
             w32-pthreads
     )
@@ -48,7 +47,7 @@ target_compile_options(${CMAKE_PROJECT_NAME}
         PRIVATE "$<$<CXX_COMPILER_ID:MSVC>:/utf-8>"
 )
 
-if (MSVC)
+if (WIN32)
     get_filename_component(python-stable-abi-lib-filename ${Python_RUNTIME_LIBRARY} NAME)
     target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
             "/DELAYLOAD:${python-stable-abi-lib-filename}"
@@ -119,7 +118,7 @@ ExternalProject_Add(
         INSTALL_COMMAND ""
 )
 
-if (MSVC)
+if (WIN32)
     target_compile_definitions(w32-pthreads INTERFACE "-DHAVE_STRUCT_TIMESPEC=1")
     set_target_properties(w32-pthreads PROPERTIES
             INTERFACE_INCLUDE_DIRECTORIES "${OBS_STUDIO_SOURCE_PATH}/deps/w32-pthreads"
@@ -138,7 +137,7 @@ endif ()
 set_target_properties(libobs PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${OBS_STUDIO_SOURCE_PATH}/libobs"
 )
-if (MSVC)
+if (WIN32)
     set_target_properties(libobs PROPERTIES
             IMPORTED_IMPLIB_DEBUG "${OBS_STUDIO_BUILD_PATH}/libobs/Debug/obs.lib"
             IMPORTED_IMPLIB_RELEASE "${OBS_STUDIO_BUILD_PATH}/libobs/Release/obs.lib"
@@ -162,7 +161,7 @@ add_dependencies(libobs obs-studio-source)
 set_target_properties(libobs-frontend-api PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${OBS_STUDIO_SOURCE_PATH}/UI/obs-frontend-api"
 )
-if (MSVC)
+if (WIN32)
     set_target_properties(libobs-frontend-api PROPERTIES
             IMPORTED_IMPLIB_DEBUG "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/Debug/obs-frontend-api.lib"
             IMPORTED_IMPLIB_RELEASE "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/Release/obs-frontend-api.lib"
