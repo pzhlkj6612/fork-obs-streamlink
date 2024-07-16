@@ -1,6 +1,4 @@
-#include "obs-streamlink.h"
-
-#include "util/base.h"
+#include "utils.hpp"
 
 #include <filesystem>
 
@@ -13,7 +11,7 @@ ExternC const PfnDliHook __pfnDliNotifyHook2 = obs_streamlink_delay_load;
 
 FARPROC WINAPI obs_streamlink_delay_load(unsigned dliNotify, PDelayLoadInfo pdli)
 {
-	blog(LOG_WARNING, "delay_load: [%u, %s]", dliNotify, pdli->szDll);
+	FF_LOG(LOG_WARNING, "delay_load: [%u, %s]", dliNotify, pdli->szDll);
 
     if (dliNotify == dliNotePreLoadLibrary)
     {
@@ -34,7 +32,7 @@ FARPROC WINAPI obs_streamlink_delay_load(unsigned dliNotify, PDelayLoadInfo pdli
         const auto handle = LoadLibraryW(pathPython.wstring().c_str());
         if (handle)
             return reinterpret_cast<FARPROC>(handle);
-        blog(LOG_ERROR, "delay_load failed [%s]: %d", pathPython.string(), GetLastError());
+        FF_LOG(LOG_ERROR, "delay_load failed [%s]: %d", pathPython.string(), GetLastError());
 #endif
     }
 

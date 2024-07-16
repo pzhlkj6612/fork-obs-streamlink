@@ -1,7 +1,6 @@
 ﻿// ReSharper disable CppParameterMayBeConstPtrOrRef
 // ReSharper disable CppClangTidyClangDiagnosticGnuZeroVariadicMacroArguments
 
-#include <obs-module.h>
 #ifdef _MSC_VER
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -17,18 +16,13 @@ extern "C" {
 #include <media-playback/media.h>
 }
 
+#include "utils.hpp"
+
 #include <fstream>
 #include <filesystem>
 #include <sstream>
 
-
-#define FF_LOG(level, format, ...) \
-	blog(level, "[Streamlink Source]: " format, ##__VA_ARGS__)
-#define FF_LOG_S(source, level, format, ...)        \
-	blog(level, "[Streamlink Source '%s']: " format, \
-	     obs_source_get_name(source), ##__VA_ARGS__)
-#define FF_BLOG(level, format, ...) \
-	FF_LOG_S(s->source, level, format, ##__VA_ARGS__)
+#include <obs-module.h>
 
 const char* URL = "url";
 const char* DEFINITIONS = "definitions";
@@ -238,7 +232,7 @@ static void get_frame(void *opaque, struct obs_source_frame *f)
 {
 	auto *s = static_cast<streamlink_source_t*>(opaque);
 	obs_source_output_video(s->source, f);
-	// blog(LOG_INFO, "get_frame: %u", *f->data);
+	// FF_LOG(LOG_INFO, "get_frame: %u", *f->data);
 }
 
 static void preload_frame(void *opaque, struct obs_source_frame *f)
@@ -270,7 +264,7 @@ static void media_stopped(void *opaque)
 }
 
 static int read_packet(void* opaque, uint8_t* buf, int buf_size) {
-	blog(LOG_INFO, "read_packet: [x, x, %d]", buf_size);
+	FF_LOG(LOG_INFO, "read_packet: [x, x, %d]", buf_size);
 
     auto c = static_cast<streamlink_source_t*>(opaque);
 	streamlink::ThreadGIL state = streamlink::ThreadGIL();
@@ -300,7 +294,13 @@ int streamlink_open(streamlink_source_t* c) {
 		auto udly = pref->second.Open();
 		c->stream = new streamlink::Stream(udly);
 	}catch (std::exception & ex) {
-		FF_LOG(LOG_WARNING, "Failed to open streamlink stream for URL %s! %s", c->live_room_url, ex.what());
+		/*
+		 TODO: if there are multiple sources:
+			   File "A:\python-3.8.0-embed-amd64\lib\site-packages\streamlink\session\session.py", line 148, in streams
+			   File "A:\python-3.8.0-embed-amd64\lib\site-packages\streamlink\plugin\plugin.py", line 397, in streams
+			 PluginError: set_wakeup_fd only works in main thread
+		 */
+		FF_LOG(LOG_WARNING, "Failed to open streamlink stream for URL \"%s\"! \n%s", c->live_room_url, ex.what());
 		return -1;
 	}
 	return 0;
@@ -565,7 +565,7 @@ static void get_nb_frames(void *data, calldata_t *cd)
 	if (stream->nb_frames > 0) {
 		frames = stream->nb_frames;
 	} else {
-		FF_BLOG(LOG_DEBUG, "nb_frames not set, estimating using frame "
+		FF_LOG(LOG_DEBUG, "nb_frames not set, estimating using frame "
 				   "rate and duration");
 		const AVRational avg_frame_rate = stream->avg_frame_rate;
 		frames = static_cast<int64_t>(ceil(static_cast<double>(s->media.fmt->duration) /

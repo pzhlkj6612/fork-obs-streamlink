@@ -1,6 +1,8 @@
 #include "obs-streamlink.h"
+
+#include "utils.hpp"
+
 #include <obs-module.h>
-#include "obs-source-old.h"
 
 #include "python-streamlink.h"
 
@@ -11,23 +13,23 @@ MODULE_EXPORT const char *obs_module_description(void)
 	return "Streamlink Source";
 }
 
-extern "C" obs_source_info_old streamlink_source_info;
+extern "C" obs_source_info streamlink_source_info;
 std::filesystem::path obs_streamlink_data_path;
 
 bool obs_module_load(void)
 {
-	blog(LOG_INFO, "[Streamlink Source] 6666666666666666666666666666666666666");
+	FF_LOG(LOG_INFO, "6666666666666666666666666666666666666");
 
 	std::string data_path = obs_get_module_data_path(obs_current_module());
 	obs_streamlink_data_path = data_path;
 	// if (!std::filesystem::exists(obs_streamlink_data_path / obs_streamlink_python_ver))
 	// {
-	// 	blog(LOG_ERROR, "[Streamlink Source] Failed to initialize streamlink source!! Python38 not found in plugin data path.");
+	// 	FF_LOG(LOG_ERROR, "Failed to initialize streamlink source!! Python38 not found in plugin data path.");
 	// 	return false;
 	// }
 
 	streamlink::Initialize();
-	obs_register_source_s(reinterpret_cast<const obs_source_info*>(&streamlink_source_info), sizeof(obs_source_info_old));
+	obs_register_source(&streamlink_source_info);
 	return true;
 }
 

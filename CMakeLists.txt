@@ -9,11 +9,15 @@ find_package(Python 3.8...3.11 REQUIRED COMPONENTS Development)
 find_package(FFmpeg REQUIRED COMPONENTS swscale)
 
 
+# TODO: obsproject/obs-websocket/cmake/FindLibObs.cmake
+
+
 set(OBS_STUDIO_SOURCE_PATH "" CACHE PATH "the path to the source code of OBS Studio")
 if (NOT EXISTS "${OBS_STUDIO_SOURCE_PATH}/CMakeLists.txt" OR NOT EXISTS "${OBS_STUDIO_SOURCE_PATH}/libobs")
     message(FATAL_ERROR "Please specify valid OBS_STUDIO_SOURCE_PATH")
 endif ()
 
+# TODO: SIMD stuff?
 add_subdirectory("${OBS_STUDIO_SOURCE_PATH}/deps/media-playback" deps/obs-studio-media-playback EXCLUDE_FROM_ALL)
 target_link_libraries(media-playback INTERFACE ${FFMPEG_LIBRARIES})
 
@@ -90,6 +94,7 @@ ExternalProject_Add(obs-studio-source
             -DENABLE_PLUGINS=OFF
             -DENABLE_UPDATER=OFF
             -DENABLE_DECKLINK=OFF
+        # https://stackoverflow.com/questions/76362485/how-can-i-get-the-variable-of-build-configuration-of-multi-config-generator-in-c
         BUILD_COMMAND "${CMAKE_COMMAND}" --build <BINARY_DIR> --config $<CONFIG> --target libobs obs-frontend-api
         BUILD_BYPRODUCTS
             # Ninja only: https://stackoverflow.com/questions/40314785/linking-against-an-externalproject-add-dependency-in-cmake

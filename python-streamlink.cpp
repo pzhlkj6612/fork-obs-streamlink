@@ -1,16 +1,11 @@
 // ReSharper disable CppMemberFunctionMayBeConst
 
 #include "python-streamlink.h"
-#include <obs-module.h>
 
-#include <frameobject.h>
+#include "utils.hpp"
 
-#ifdef _MSC_VER
-#define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
-#endif
+#include <frameobject.h> // TODO: move to "python-x.h"
 
-#include <cstring>
 #include <sstream>
 
 namespace streamlink {
@@ -82,7 +77,7 @@ namespace streamlink {
     }
     void LogFailure()
     {
-        blog(LOG_ERROR, ("[Streamlink Source]: Failed to initialize streamlink plugin: " + GetExceptionInfo()).c_str());
+        FF_LOG(LOG_ERROR, "Failed to initialize streamlink plugin: %s", GetExceptionInfo().c_str());
     }
 
     void Initialize()
@@ -97,7 +92,7 @@ namespace streamlink {
         };
         if (!Py_IsInitialized())
         {
-            blog(LOG_INFO, "initliazing Python...");
+            FF_LOG(LOG_INFO, "initializing Python...");
             // TODO make this configurable via properties.
             std::string python_path{R"(A:\obs-debug-install\data\obs-plugins\obs-streamlink\-1Python38)"};
             auto widstr = std::wstring(python_path.begin(), python_path.end());
@@ -105,6 +100,7 @@ namespace streamlink {
             Py_Initialize();
         }
 
+        // TODO: when to release?
         PyGILState_Ensure();
         PyRun_SimpleString("import sys; print(f'sys.version = {sys.version}'); print(f'sys.path = {sys.path}');");
         PyRun_SimpleString("import site; print(site.getsitepackages());");
