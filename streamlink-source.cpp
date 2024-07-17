@@ -143,7 +143,7 @@ static void streamlink_source_defaults(obs_data_t *settings)
 
 static void streamlink_source_start(struct streamlink_source* s);
 bool refresh_definitions(obs_properties_t* props,obs_property_t* prop,void* data) {
-    auto s = static_cast<streamlink_source_t*>(data);
+	const auto s = static_cast<streamlink_source_t*>(data);
 
 	obs_data_t* settings = obs_source_get_settings(s->source);
 	const char* url = obs_data_get_string(settings, URL);
@@ -158,7 +158,7 @@ bool refresh_definitions(obs_properties_t* props,obs_property_t* prop,void* data
 		for (auto& stream : streams) {
 			const char* definition = stream.first.c_str();
 			obs_property_list_add_string(list, definition, definition);
-			s->available_definitions->push_back(definition);
+			s->available_definitions->emplace_back(definition);
 		}
 		return true;
 	}
@@ -172,7 +172,7 @@ static obs_properties_t *streamlink_source_getproperties(void *data)
 {
 	// ReSharper disable CppAssignedValueIsNeverUsed
 	// ReSharper disable CppJoinDeclarationAndAssignment
-    auto s = static_cast<streamlink_source_t*>(data);
+	const auto s = static_cast<streamlink_source_t*>(data);
 	UNUSED_PARAMETER(data);
 	obs_properties_t *props = obs_properties_create();
 	obs_properties_set_flags(props, OBS_PROPERTIES_DEFER_UPDATE);
@@ -180,7 +180,7 @@ static obs_properties_t *streamlink_source_getproperties(void *data)
     prop = obs_properties_add_text(props, URL, obs_module_text(URL), OBS_TEXT_DEFAULT);
 	prop = obs_properties_add_list(props, DEFINITIONS, obs_module_text(DEFINITIONS), OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
 	obs_property_set_modified_callback2(prop, [](void* priv, obs_properties_t*, obs_property_t* prop, obs_data_t* data) -> bool {
-        auto s = static_cast<streamlink_source_t*>(priv);
+        const auto s = static_cast<streamlink_source_t*>(priv);
 		auto propName = obs_property_name(prop);
 		auto shouldPropName = DEFINITIONS;
 		if (astrcmp_n(propName, shouldPropName, strlen(shouldPropName)) != 0) return false;
@@ -249,32 +249,16 @@ static void seek_frame(void* opaque, struct obs_source_frame* f)
 
 static void get_audio(void *opaque, struct obs_source_audio *a)
 {
-    auto s = static_cast<streamlink_source_t*>(opaque);
+	const auto s = static_cast<streamlink_source_t*>(opaque);
 	obs_source_output_audio(s->source, a);
 }
 
 static void media_stopped(void *opaque)
 {
-    auto s = static_cast<streamlink_source_t*>(opaque);
-	{
-		obs_source_output_video(s->source, NULL);
-		if (s->media_valid)
-			s->destroy_media = true;
-	}
-}
-
-static int read_packet(void* opaque, uint8_t* buf, int buf_size) {
-	FF_LOG(LOG_INFO, "read_packet: [x, x, %d]", buf_size);
-
-    auto c = static_cast<streamlink_source_t*>(opaque);
-	streamlink::ThreadGIL state = streamlink::ThreadGIL();
-	try {
-		return c->stream->Read(buf, buf_size); // Impossible to read > 4G at one packet..
-	}
-	catch (std::exception & ex) {
-		FF_LOG(LOG_WARNING, "Failed read from video stream for livestream %s! %s", c->live_room_url, ex.what());
-		return -1;
-	}
+	const auto s = static_cast<streamlink_source_t*>(opaque);
+	obs_source_output_video(s->source, nullptr);
+	if (s->media_valid)
+		s->destroy_media = true;
 }
 
 int streamlink_open(streamlink_source_t* c) {
@@ -363,16 +347,14 @@ static void *write_pipe_thread(void *data) {
 
 	FF_BLOG(LOG_INFO, "ready to read and write");
 
-	std::vector<uint8_t> read_buf(1024 * 1024, '0');
-
 	while (os_event_try(s->stop_signal) == EAGAIN) {
-		int read_size = 0;
+		std::vector<char> read_buf{};
 		{
 			streamlink::ThreadGIL state = streamlink::ThreadGIL();
-			read_size = s->stream->Read(read_buf.data(), read_buf.size());
+			read_buf = s->stream->Read(1024 * 1024 /* TODO: configurable */);
 		}
 
-		if (read_size == 0) {
+		if (read_buf.empty()) {
 			FF_BLOG(LOG_INFO, "read: EOF");
 #ifdef _MSC_VER
 			if (CloseHandle(write_pipe) == FALSE) {
@@ -388,7 +370,7 @@ static void *write_pipe_thread(void *data) {
 
 #ifdef _MSC_VER
 		DWORD numWritten;
-		if (WriteFile(write_pipe, read_buf.data(), read_size, &numWritten, nullptr) == FALSE) {
+		if (WriteFile(write_pipe, read_buf.data(), read_buf.size(), &numWritten, nullptr) == FALSE) {
 			auto ec = GetLastError();
 			FF_BLOG(LOG_INFO, "ec = %lu", ec);
 			if (ec != ERROR_BROKEN_PIPE) {
@@ -461,7 +443,7 @@ static void streamlink_source_tick(void *data, float seconds)
 {
 	UNUSED_PARAMETER(seconds);
 
-    auto s = static_cast<streamlink_source_t*>(data);
+	const auto s = static_cast<streamlink_source_t*>(data);
 	if (s->destroy_media) {
 		if (s->media_valid) {
 			mp_media_free(&s->media);
@@ -484,14 +466,14 @@ static void streamlink_source_start(struct streamlink_source *s)
 
 static void streamlink_source_update(void *data, obs_data_t *settings)
 {
-    auto s = static_cast<streamlink_source_t*>(data);
+	const auto s = static_cast<streamlink_source_t*>(data);
 
 	update_streamlink_session(s, settings);
 
     if (s->live_room_url)
 		bfree(s->live_room_url);
 	const char* live_room_url = obs_data_get_string(settings, URL);
-	s->live_room_url = live_room_url ? bstrdup(live_room_url) : NULL;
+	s->live_room_url = live_room_url ? bstrdup(live_room_url) : nullptr;
 
 	s->is_hw_decoding = obs_data_get_bool(settings, HW_DECODE);
 
@@ -519,20 +501,20 @@ static void restart_hotkey(void *data, obs_hotkey_id id, obs_hotkey_t *hotkey,
 	UNUSED_PARAMETER(hotkey);
 	UNUSED_PARAMETER(pressed);
 
-    auto s = static_cast<streamlink_source_t*>(data);
+	const auto s = static_cast<streamlink_source_t*>(data);
 	if (obs_source_active(s->source))
 		streamlink_source_start(s);
 }
 
 static void restart_proc(void *data, calldata_t *cd)
 {
-	restart_hotkey(data, 0, NULL, true);
+	restart_hotkey(data, 0, nullptr, true);
 	UNUSED_PARAMETER(cd);
 }
 
 static void get_duration(void *data, calldata_t *cd)
 {
-    auto s = static_cast<streamlink_source_t*>(data);
+	const auto s = static_cast<streamlink_source_t*>(data);
 	int64_t dur = 0;
 	if (s->media.fmt)
 		dur = s->media.fmt->duration;
@@ -542,7 +524,7 @@ static void get_duration(void *data, calldata_t *cd)
 
 static void get_nb_frames(void *data, calldata_t *cd)
 {
-    auto s = static_cast<streamlink_source_t*>(data);
+	const auto s = static_cast<streamlink_source_t*>(data);
 	int64_t frames = 0;
 
 	if (!s->media.fmt) {
@@ -551,7 +533,7 @@ static void get_nb_frames(void *data, calldata_t *cd)
 	}
 
 	int video_stream_index = av_find_best_stream(
-		s->media.fmt, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
+		s->media.fmt, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
 
 	if (video_stream_index < 0) {
 		FF_BLOG(LOG_WARNING, "Getting number of frames failed: No "
@@ -579,7 +561,7 @@ static void get_nb_frames(void *data, calldata_t *cd)
 
 static void *streamlink_source_create(obs_data_t *settings, obs_source_t *source)
 {
-    auto s = static_cast<streamlink_source_t*>(bzalloc(sizeof(struct streamlink_source)));
+	const auto s = static_cast<streamlink_source_t*>(bzalloc(sizeof(struct streamlink_source)));
 	s->source = source;
 	s->available_definitions = new std::vector<std::string>;
 
@@ -617,7 +599,7 @@ static void *streamlink_source_create(obs_data_t *settings, obs_source_t *source
 
 static void streamlink_source_destroy(void *data)
 {
-    auto s = static_cast<streamlink_source_t*>(data);
+	const auto s = static_cast<streamlink_source_t*>(data);
 
 	if (s->hotkey)
 		obs_hotkey_unregister(s->hotkey);
@@ -632,7 +614,7 @@ static void streamlink_source_destroy(void *data)
 #else
 	if (s->thread) {
 #endif
-	    pthread_join(s->thread, NULL);
+	    pthread_join(s->thread, nullptr);
 	}
 	if (s->stop_signal) {
 	    os_event_destroy(s->stop_signal);
@@ -648,17 +630,17 @@ static void streamlink_source_destroy(void *data)
 
 static void streamlink_source_show(void *data)
 {
-    auto s = static_cast<streamlink_source_t*>(data);
+	const auto s = static_cast<streamlink_source_t*>(data);
 	streamlink_source_start(s);
 }
 
 static void streamlink_source_hide(void *data)
 {
-    auto s = static_cast<streamlink_source_t*>(data);
+	const auto s = static_cast<streamlink_source_t*>(data);
 
 	if (s->media_valid)
 		mp_media_stop(&s->media);
-	obs_source_output_video(s->source, NULL);
+	obs_source_output_video(s->source, nullptr);
 	streamlink_close(s);
 }
 

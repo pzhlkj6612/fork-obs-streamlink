@@ -15,9 +15,10 @@
 #include <Python.h>
 #endif
 
-#include <string>
 #include <map>
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 namespace streamlink {
     extern bool loaded;
@@ -81,7 +82,7 @@ namespace streamlink {
         Stream(Stream&) = delete;
         Stream(Stream&& another) noexcept;
 
-        int Read(unsigned char* buf, const int len);
+        std::vector<char> Read(size_t readSize);
         void Close();
 
     };

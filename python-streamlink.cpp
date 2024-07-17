@@ -148,28 +148,27 @@ namespace streamlink {
     Stream::Stream(Stream&& another) noexcept : PyObjectHolder(std::move(another))
     {
     }
-    int Stream::Read(unsigned char* buf, const int len)
+    std::vector<char> Stream::Read(const size_t readSize)
     {
-        auto iucallable = PyObject_GetAttrString(underlying, "read");
-        if (iucallable == nullptr)
+        const auto readFunc = PyObject_GetAttrString(underlying, "read");
+        if (!readFunc)
             throw invalid_underlying_object();
-        auto iucallableHolder = PyObjectHolder(iucallable, false);
-        if (!PyCallable_Check(iucallable)) throw invalid_underlying_object();
+        auto iucallableHolder = PyObjectHolder(readFunc, false);
+        if (!PyCallable_Check(readFunc)) throw invalid_underlying_object();
 
-        auto args = PyTuple_Pack(1, PyLong_FromLong(len));
+        auto args = PyTuple_Pack(1, PyLong_FromSize_t(readSize));
         auto argsGuard = PyObjectHolder(args, false);
 
-        auto result = PyObject_Call(iucallable, args, nullptr);
-        if (result == nullptr)
+        const auto result = PyObject_Call(readFunc, args, nullptr);
+        if (!result)
             throw call_failure(GetExceptionInfo().c_str());
         auto resultGuard = PyObjectHolder(result, false);
 
         char* buf1;
         ssize_t readLen;
         PyBytes_AsStringAndSize(result, &buf1, &readLen);
-        std::memcpy(buf, buf1, readLen > len ? len : readLen);
 
-        return static_cast<int>(readLen);
+        return {buf1, buf1 + readLen};
     }
     void Stream::Close()
     {
