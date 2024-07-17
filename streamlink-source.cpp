@@ -8,10 +8,13 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #endif
-#include <util/platform.h>
-#include <util/dstr.h>
+
+#include <util/dstr.h> // TODO: remove
+
 #include "nlohmann/json.hpp"
+
 #include "python-streamlink.h"
+
 extern "C" {
 #include <media-playback/media.h>
 }
