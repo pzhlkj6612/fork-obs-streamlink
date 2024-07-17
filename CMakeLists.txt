@@ -25,7 +25,6 @@ if (WIN32)
     add_library(w32-pthreads SHARED IMPORTED)
 endif ()
 add_library(libobs SHARED IMPORTED)
-add_library(libobs-frontend-api SHARED IMPORTED)
 
 add_library(${CMAKE_PROJECT_NAME} SHARED
         obs-streamlink.cpp
@@ -35,7 +34,7 @@ if (WIN32)
     target_sources(${CMAKE_PROJECT_NAME} PRIVATE streamlink-delayload.cpp)
 endif ()
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE "deps/")
-target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE media-playback Python::Module libobs libobs-frontend-api)
+target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE media-playback Python::Module libobs)
 if (WIN32)
     target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE w32-pthreads)
 endif ()
@@ -68,7 +67,7 @@ else ()
     # https://github.com/obsproject/obs-plugintemplate/blob/e3688b7491c52ef6e37ac59daa93e7cf4d9e2b28/cmake/linux/helpers.cmake#L60-L63
     install(DIRECTORY ${CMAKE_SOURCE_DIR}/data/
             DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/obs/obs-plugins/obs-streamlink")
-    # to be able to find libobs.so and libobs-frontend-api.so
+    # to be able to find libobs.so
     set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES
             INSTALL_RPATH "$ORIGIN/..")
 endif()
@@ -94,12 +93,12 @@ ExternalProject_Add(obs-studio-source
             -DENABLE_PLUGINS=OFF
             -DENABLE_UPDATER=OFF
             -DENABLE_DECKLINK=OFF
+            -DENABLE_UI=OFF
         # https://stackoverflow.com/questions/76362485/how-can-i-get-the-variable-of-build-configuration-of-multi-config-generator-in-c
-        BUILD_COMMAND "${CMAKE_COMMAND}" --build <BINARY_DIR> --config $<CONFIG> --target libobs obs-frontend-api
+        BUILD_COMMAND "${CMAKE_COMMAND}" --build <BINARY_DIR> --config $<CONFIG> --target libobs
         BUILD_BYPRODUCTS
             # Ninja only: https://stackoverflow.com/questions/40314785/linking-against-an-externalproject-add-dependency-in-cmake
             "${OBS_STUDIO_BUILD_PATH}/libobs/libobs.so"
-            "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/libobs-frontend-api.so"
         INSTALL_COMMAND "")
 
 if (WIN32)
@@ -128,19 +127,4 @@ if (WIN32)
 else ()
     set_target_properties(libobs PROPERTIES
             IMPORTED_LOCATION "${OBS_STUDIO_BUILD_PATH}/libobs/libobs.so")
-endif ()
-
-add_dependencies(libobs-frontend-api obs-studio-source)
-set_target_properties(libobs-frontend-api PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES "${OBS_STUDIO_SOURCE_PATH}/UI/obs-frontend-api")
-if (WIN32)
-    foreach(CONFIG_TYPE ${CMAKE_CONFIGURATION_TYPES})
-        string(TOUPPER ${CONFIG_TYPE} CONFIG_TYPE_UPPER)
-        set_target_properties(libobs-frontend-api PROPERTIES
-                IMPORTED_IMPLIB_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/${CONFIG_TYPE}/obs-frontend-api.lib"
-                IMPORTED_LOCATION_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/${CONFIG_TYPE}/obs-frontend-api.dll")
-    endforeach ()
-else ()
-    set_target_properties(libobs-frontend-api PROPERTIES
-        IMPORTED_LOCATION "${OBS_STUDIO_BUILD_PATH}/UI/obs-frontend-api/libobs-frontend-api.so")
 endif ()
