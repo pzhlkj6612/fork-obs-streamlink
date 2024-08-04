@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}")
 
-find_package(Python 3.8...3.11 REQUIRED COMPONENTS Development)
+find_package(Python 3.8...<3.12 REQUIRED COMPONENTS Development)
 find_package(FFmpeg REQUIRED COMPONENTS swscale)
 
 
@@ -26,15 +26,22 @@ if (WIN32)
 endif ()
 add_library(libobs SHARED IMPORTED)
 
-add_library(${CMAKE_PROJECT_NAME} SHARED
+set(SRC_FILES
         obs-streamlink.cpp
         python-streamlink.cpp
         streamlink-source.cpp)
+
+if (APPLE)
+    add_library(${CMAKE_PROJECT_NAME} MODULE ${SRC_FILES})
+else ()
+    add_library(${CMAKE_PROJECT_NAME} SHARED ${SRC_FILES})
+endif ()
+
 if (WIN32)
     target_sources(${CMAKE_PROJECT_NAME} PRIVATE streamlink-delayload.cpp)
 endif ()
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE "deps/")
-target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE media-playback Python::Module libobs)
+target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE media-playback Python::Module Python::Python #[[ TODO ]] libobs)
 if (WIN32)
     target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE w32-pthreads)
 endif ()
@@ -124,6 +131,9 @@ if (WIN32)
                 IMPORTED_IMPLIB_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/libobs/${CONFIG_TYPE}/obs.lib"
                 IMPORTED_LOCATION_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/libobs/${CONFIG_TYPE}/obs.dll")
     endforeach ()
+elseif (APPLE)
+    set_target_properties(libobs PROPERTIES
+            IMPORTED_LOCATION "${OBS_STUDIO_BUILD_PATH}/libobs/libobs.framework")
 else ()
     set_target_properties(libobs PROPERTIES
             IMPORTED_LOCATION "${OBS_STUDIO_BUILD_PATH}/libobs/libobs.so")

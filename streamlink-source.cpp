@@ -384,7 +384,7 @@ static void *write_pipe_thread(void *data) {
 			break;
 		}
 #else
-		outfife.write(reinterpret_cast<char*>(read_buf.data()), read_size);
+		outfife.write(reinterpret_cast<char*>(read_buf.data()), read_buf.size());
 #endif
 		// FF_BLOG(LOG_INFO, "numWritten=%lld", numWritten);
 	}
