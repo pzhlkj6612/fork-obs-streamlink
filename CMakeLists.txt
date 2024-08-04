@@ -113,24 +113,38 @@ if (WIN32)
     target_compile_definitions(w32-pthreads INTERFACE "-DHAVE_STRUCT_TIMESPEC=1")
     set_target_properties(w32-pthreads PROPERTIES
             INTERFACE_INCLUDE_DIRECTORIES "${OBS_STUDIO_SOURCE_PATH}/deps/w32-pthreads")
-    foreach(CONFIG_TYPE ${CMAKE_CONFIGURATION_TYPES})
-        string(TOUPPER ${CONFIG_TYPE} CONFIG_TYPE_UPPER)
+    if (NOT CMAKE_CONFIGURATION_TYPES)
+        string(TOUPPER ${CMAKE_BUILD_TYPE} CMAKE_BUILD_TYPE_UPPER)
         set_target_properties(w32-pthreads PROPERTIES
-                IMPORTED_IMPLIB_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/deps/w32-pthreads/${CONFIG_TYPE}/w32-pthreads.lib"
-                IMPORTED_LOCATION_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/deps/w32-pthreads/${CONFIG_TYPE}/w32-pthreads.dll")
-    endforeach ()
+                IMPORTED_IMPLIB_${CMAKE_BUILD_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/deps/w32-pthreads/${CMAKE_BUILD_TYPE}/w32-pthreads.lib"
+                IMPORTED_LOCATION_${CMAKE_BUILD_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/deps/w32-pthreads/${CMAKE_BUILD_TYPE}/w32-pthreads.dll")
+    else ()
+        foreach(CONFIG_TYPE ${CMAKE_CONFIGURATION_TYPES})
+            string(TOUPPER ${CONFIG_TYPE} CONFIG_TYPE_UPPER)
+            set_target_properties(w32-pthreads PROPERTIES
+                    IMPORTED_IMPLIB_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/deps/w32-pthreads/${CONFIG_TYPE}/w32-pthreads.lib"
+                    IMPORTED_LOCATION_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/deps/w32-pthreads/${CONFIG_TYPE}/w32-pthreads.dll")
+        endforeach ()
+    endif ()
 endif ()
 
 add_dependencies(libobs obs-studio-source)
 set_target_properties(libobs PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${OBS_STUDIO_SOURCE_PATH}/libobs")
 if (WIN32)
-    foreach(CONFIG_TYPE ${CMAKE_CONFIGURATION_TYPES})
-        string(TOUPPER ${CONFIG_TYPE} CONFIG_TYPE_UPPER)
+    if (NOT CMAKE_CONFIGURATION_TYPES)
+        string(TOUPPER ${CMAKE_BUILD_TYPE} CMAKE_BUILD_TYPE_UPPER)
         set_target_properties(libobs PROPERTIES
-                IMPORTED_IMPLIB_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/libobs/${CONFIG_TYPE}/obs.lib"
-                IMPORTED_LOCATION_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/libobs/${CONFIG_TYPE}/obs.dll")
-    endforeach ()
+                IMPORTED_IMPLIB_${CMAKE_BUILD_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/libobs/${CMAKE_BUILD_TYPE}/obs.lib"
+                IMPORTED_LOCATION_${CMAKE_BUILD_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/libobs/${CMAKE_BUILD_TYPE}/obs.dll")
+    else ()
+        foreach(CONFIG_TYPE ${CMAKE_CONFIGURATION_TYPES})
+            string(TOUPPER ${CONFIG_TYPE} CONFIG_TYPE_UPPER)
+            set_target_properties(libobs PROPERTIES
+                    IMPORTED_IMPLIB_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/libobs/${CONFIG_TYPE}/obs.lib"
+                    IMPORTED_LOCATION_${CONFIG_TYPE_UPPER} "${OBS_STUDIO_BUILD_PATH}/libobs/${CONFIG_TYPE}/obs.dll")
+        endforeach ()
+    endif ()
 elseif (APPLE)
     set_target_properties(libobs PROPERTIES
             IMPORTED_LOCATION "${OBS_STUDIO_BUILD_PATH}/libobs/libobs.framework")
