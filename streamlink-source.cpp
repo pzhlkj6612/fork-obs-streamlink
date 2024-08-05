@@ -56,8 +56,8 @@ struct streamlink_source {
 
 	bool is_hw_decoding{};
 
-	streamlink::Stream* stream{};
-	streamlink::Session* streamlink_session{};
+	std::unique_ptr<streamlink::Stream> stream;
+	std::unique_ptr<streamlink::Session> streamlink_session;
 
 	std::string pipe_path{};
 	pthread_t thread;
@@ -70,7 +70,6 @@ void set_streamlink_custom_options(const char* custom_options_s, streamlink_sour
 	if (strlen(custom_options_s) == 0)
 		return;
 	using namespace nlohmann;
-	auto session = s->streamlink_session;
 	try
 	{
 		auto custom_options = json::parse(custom_options_s);
@@ -81,13 +80,13 @@ void set_streamlink_custom_options(const char* custom_options_s, streamlink_sour
 			if (key.empty())
 				continue;
 			if (value.is_boolean())
-				session->SetOptionBool(key, value.get<bool>());
+				s->streamlink_session->SetOptionBool(key, value.get<bool>());
 			else if (value.is_number_integer())
-				session->SetOptionInt(key, value.get<int>());
+				s->streamlink_session->SetOptionInt(key, value.get<int>());
 			else if (value.is_number())
-				session->SetOptionDouble(key, value.get<double>());
+				s->streamlink_session->SetOptionDouble(key, value.get<double>());
 			else if (value.is_string())
-				session->SetOptionString(key, value.get<std::string>());
+				s->streamlink_session->SetOptionString(key, value.get<std::string>());
 			else
 				FF_BLOG(LOG_WARNING, "Failed to set streamlink custom options %s, value type not recognized.", key.c_str());
 		}
@@ -110,21 +109,18 @@ bool update_streamlink_session(void* data, obs_data_t* settings) {
 	//const char* streamlink_options_s = obs_data_get_string(settings, STREAMLINK_OPTIONS);
 	streamlink::ThreadGIL state = streamlink::ThreadGIL();
 	try {
-        delete s->streamlink_session;
-
-		s->streamlink_session = new streamlink::Session();
-		auto session = s->streamlink_session;
+		s->streamlink_session = std::make_unique<streamlink::Session>();
 
 		if(strlen(http_proxy_s)>1)
-			session->SetOptionString("http-proxy", http_proxy_s);
+			s->streamlink_session->SetOptionString("http-proxy", http_proxy_s);
 		if (strlen(https_proxy_s) > 1)
-			session->SetOptionString("https-proxy", https_proxy_s);
+			s->streamlink_session->SetOptionString("https-proxy", https_proxy_s);
 		if(ringbuffer_size>0)
-			session->SetOptionInt("ringbuffer-size", static_cast<long long>(ringbuffer_size) * 1024 * 1024);
-		session->SetOptionInt("hls-live-edge", hls_live_edge);
-		session->SetOptionInt("hls-segment-threads", hls_segment_threads);
-		session->SetOptionDouble("http-timeout", 5.0);
-		session->SetOptionString("ffmpeg-ffmpeg", "A:/ffmpeg-5.1.2-full_build-shared/bin/ffmpeg.exe");
+			s->streamlink_session->SetOptionInt("ringbuffer-size", static_cast<long long>(ringbuffer_size) * 1024 * 1024);
+		s->streamlink_session->SetOptionInt("hls-live-edge", hls_live_edge);
+		s->streamlink_session->SetOptionInt("hls-segment-threads", hls_segment_threads);
+		s->streamlink_session->SetOptionDouble("http-timeout", 5.0);
+		s->streamlink_session->SetOptionString("ffmpeg-ffmpeg", "A:/ffmpeg-5.1.2-full_build-shared/bin/ffmpeg.exe");
 		set_streamlink_custom_options(custom_options_s, s);
 		return true;
 	}
@@ -263,7 +259,7 @@ int streamlink_open(streamlink_source_t* c) {
 	auto state = streamlink::ThreadGIL();
 	try {
 		auto streams = c->streamlink_session->GetStreamsFromUrl(c->live_room_url);
-        delete c->stream;
+		c->stream.reset();
 		auto pref = streams.find(c->selected_definition);
 		if (pref == streams.end())
 			pref = streams.find("best");
@@ -274,7 +270,7 @@ int streamlink_open(streamlink_source_t* c) {
 			return -1;
 		}
 		auto udly = pref->second.Open();
-		c->stream = new streamlink::Stream(udly);
+		c->stream = std::make_unique<streamlink::Stream>(udly);
 	}catch (std::exception & ex) {
 		/*
 		 TODO: if there are multiple sources:
@@ -294,8 +290,7 @@ void streamlink_close(void* opaque) {
 	streamlink::ThreadGIL state = streamlink::ThreadGIL();
 	if (c->stream) {
 		c->stream->Close();
-		delete c->stream;
-		c->stream = nullptr;
+		c->stream.reset();
 	}
 }
 
@@ -618,7 +613,7 @@ static void streamlink_source_destroy(void *data)
 	}
 
 	streamlink_close(s);
-	delete s->streamlink_session;
+	s->streamlink_session.reset();
 	bfree(s);
 }
 
