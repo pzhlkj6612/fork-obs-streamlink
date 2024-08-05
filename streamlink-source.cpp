@@ -50,9 +50,9 @@ struct streamlink_source {
 	obs_source_t *source{};
 	obs_hotkey_id hotkey{};
 
-	char* live_room_url{};
-	char* definitions{};
-	std::vector<std::string>* available_definitions{};
+	std::string live_room_url{};
+	std::string selected_definition{};
+	std::vector<std::string> available_definitions{};
 
 	bool is_hw_decoding{};
 
@@ -154,12 +154,11 @@ bool refresh_definitions(obs_properties_t* props,obs_property_t* prop,void* data
 	try {
 		obs_property_t* list = obs_properties_get(props,DEFINITIONS);
 		obs_property_list_clear(list);
-		s->available_definitions->clear();
-		auto streams = s->streamlink_session->GetStreamsFromUrl(url);
-		for (auto& stream : streams) {
-			const char* definition = stream.first.c_str();
-			obs_property_list_add_string(list, definition, definition);
-			s->available_definitions->emplace_back(definition);
+		s->available_definitions = std::vector<std::string>{}; // https://github.com/microsoft/STL/issues/1934
+		const auto streams = s->streamlink_session->GetStreamsFromUrl(url);
+		for (const auto& [definition, stream_info] : streams) {
+			obs_property_list_add_string(list, definition.c_str(), definition.c_str());
+			s->available_definitions.emplace_back(definition);
 		}
 		return true;
 	}
@@ -185,11 +184,10 @@ static obs_properties_t *streamlink_source_getproperties(void *data)
 		auto propName = obs_property_name(prop);
 		if (!propName || std::strcmp(propName, DEFINITIONS) != 0) return false;
 		auto def = obs_data_get_string(data, DEFINITIONS);
-		if (s->definitions) bfree(s->definitions);
-		s->definitions = bstrdup(def);
+		s->selected_definition = std::string{def};
 		return false; // TODO find out WHY?
 	}, s);
-	for (auto& def : *s->available_definitions)
+	for (const auto& def : s->available_definitions)
 		obs_property_list_add_string(prop, def.c_str(), def.c_str());
 	prop = obs_properties_add_button2(props,REFRESH_DEFINITIONS, obs_module_text(REFRESH_DEFINITIONS), refresh_definitions, s);
 #ifndef __APPLE__
@@ -266,13 +264,13 @@ int streamlink_open(streamlink_source_t* c) {
 	try {
 		auto streams = c->streamlink_session->GetStreamsFromUrl(c->live_room_url);
         delete c->stream;
-		auto pref = streams.find(c->definitions);
+		auto pref = streams.find(c->selected_definition);
 		if (pref == streams.end())
 			pref = streams.find("best");
 		if (pref == streams.end())
 			pref = streams.begin();
 		if (pref == streams.end()) {
-			FF_LOG(LOG_WARNING, "No streams found for live url %s", c->live_room_url);
+			FF_LOG(LOG_WARNING, "No streams found for live url %s", c->live_room_url.c_str());
 			return -1;
 		}
 		auto udly = pref->second.Open();
@@ -284,7 +282,7 @@ int streamlink_open(streamlink_source_t* c) {
 			   File "A:\python-3.8.0-embed-amd64\lib\site-packages\streamlink\plugin\plugin.py", line 397, in streams
 			 PluginError: set_wakeup_fd only works in main thread
 		 */
-		FF_LOG(LOG_WARNING, "Failed to open streamlink stream for URL \"%s\"! \n%s", c->live_room_url, ex.what());
+		FF_LOG(LOG_WARNING, "Failed to open streamlink stream for URL \"%s\"! \n%s", c->live_room_url.c_str(), ex.what());
 		return -1;
 	}
 	return 0;
@@ -399,7 +397,7 @@ static void streamlink_source_destroy(void* data);
 
 static void streamlink_source_open(struct streamlink_source *s)
 {
-	if (s->live_room_url && *s->live_room_url) {
+	if (!s->live_room_url.empty()) {
         mp_media_info info = {
 			s,
 			get_frame,
@@ -470,10 +468,8 @@ static void streamlink_source_update(void *data, obs_data_t *settings)
 
 	update_streamlink_session(s, settings);
 
-    if (s->live_room_url)
-		bfree(s->live_room_url);
-	const char* live_room_url = obs_data_get_string(settings, URL);
-	s->live_room_url = live_room_url ? bstrdup(live_room_url) : nullptr;
+	const auto live_room_url = obs_data_get_string(settings, URL);
+	s->live_room_url = live_room_url ? std::string{live_room_url} : std::string{};
 
 	s->is_hw_decoding = obs_data_get_bool(settings, HW_DECODE);
 
@@ -564,12 +560,12 @@ static void *streamlink_source_create(obs_data_t *settings, obs_source_t *source
 	const auto s = static_cast<streamlink_source_t*>(bzalloc(sizeof(streamlink_source)));
 
 	s->source = source;
-	s->available_definitions = new std::vector<std::string>;
+	s->available_definitions = std::vector<std::string>{};
 
 	s->hotkey = obs_hotkey_register_source(source, "MediaSource.Restart",
 					       obs_module_text("RestartMedia"),
 					       restart_hotkey, s);
-	s->definitions = bstrdup("best");
+	s->selected_definition = std::string{"best"};
 
 	proc_handler_t *ph = obs_source_get_proc_handler(source);
 	proc_handler_add(ph, "void restart()", restart_proc, s);
@@ -622,9 +618,6 @@ static void streamlink_source_destroy(void *data)
 	}
 
 	streamlink_close(s);
-	bfree(s->live_room_url);
-	bfree(s->definitions);
-	delete s->available_definitions;
 	delete s->streamlink_session;
 	bfree(s);
 }
