@@ -1,7 +1,7 @@
 ﻿// ReSharper disable CppParameterMayBeConstPtrOrRef
 // ReSharper disable CppClangTidyClangDiagnosticGnuZeroVariadicMacroArguments
 
-#ifdef _MSC_VER
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #else
@@ -9,11 +9,9 @@
 #include <sys/types.h>
 #endif
 
-#include <util/dstr.h> // TODO: remove
-
 #include "nlohmann/json.hpp"
 
-#include "python-streamlink.h"
+#include "python-streamlink.h" // TODO: remove
 
 extern "C" {
 #include <media-playback/media.h>
@@ -27,22 +25,22 @@ extern "C" {
 
 #include <obs-module.h>
 
-const char* URL = "url";
-const char* DEFINITIONS = "definitions";
-const char* REFRESH_DEFINITIONS = "refresh_definitions";
-const char* HW_DECODE = "hw_decode";
-const char* IS_ADVANCED_SETTINGS_SHOW = "is_advanced_settings_show";
-const char* ADVANCED_SETTINGS = "advanced_settings";
-const char* STREAMLINK_OPTIONS = "streamlink_options";
-const char* HTTP_PROXY = "http_proxy";
-const char* HTTPS_PROXY = "https_proxy";
-const char* RING_BUFFER_SIZE = "ringbuffer_size";
-const char* HLS_LIVE_EDGE = "hls_live_edge";
-const char* HLS_SEGMENT_THREADS = "hls_segment_threads";
-const char* STREAMLINK_CUSTOM_OPTIONS = "streamlink_custom_options";
-const char* FFMPEG_CUSTOM_OPTIONS = "ffmpeg_custom_options";
-const char* STREAMLINK_CUSTOM_OPTIONS_TOOLTIP = "streamlink_custom_options_tooltip";
-const char* FFMPEG_CUSTOM_OPTIONS_TOOLTIP = "ffmpeg_custom_options_tooltip";
+constexpr auto URL = "url";
+constexpr auto DEFINITIONS = "definitions";
+constexpr auto REFRESH_DEFINITIONS = "refresh_definitions";
+constexpr auto HW_DECODE = "hw_decode";
+constexpr auto IS_ADVANCED_SETTINGS_SHOW = "is_advanced_settings_show";
+constexpr auto ADVANCED_SETTINGS = "advanced_settings";
+constexpr auto STREAMLINK_OPTIONS = "streamlink_options";
+constexpr auto HTTP_PROXY = "http_proxy";
+constexpr auto HTTPS_PROXY = "https_proxy";
+constexpr auto RING_BUFFER_SIZE = "ringbuffer_size";
+constexpr auto HLS_LIVE_EDGE = "hls_live_edge";
+constexpr auto HLS_SEGMENT_THREADS = "hls_segment_threads";
+constexpr auto STREAMLINK_CUSTOM_OPTIONS = "streamlink_custom_options";
+constexpr auto FFMPEG_CUSTOM_OPTIONS = "ffmpeg_custom_options";
+constexpr auto STREAMLINK_CUSTOM_OPTIONS_TOOLTIP = "streamlink_custom_options_tooltip";
+constexpr auto FFMPEG_CUSTOM_OPTIONS_TOOLTIP = "ffmpeg_custom_options_tooltip";
 
 struct streamlink_source {
 	mp_media_t media{};
@@ -185,9 +183,8 @@ static obs_properties_t *streamlink_source_getproperties(void *data)
 	obs_property_set_modified_callback2(prop, [](void* priv, obs_properties_t*, obs_property_t* prop, obs_data_t* data) -> bool {
         const auto s = static_cast<streamlink_source_t*>(priv);
 		auto propName = obs_property_name(prop);
-		auto shouldPropName = DEFINITIONS;
-		if (astrcmp_n(propName, shouldPropName, strlen(shouldPropName)) != 0) return false;
-		auto def = obs_data_get_string(data, shouldPropName);
+		if (!propName || std::strcmp(propName, DEFINITIONS) != 0) return false;
+		auto def = obs_data_get_string(data, DEFINITIONS);
 		if (s->definitions) bfree(s->definitions);
 		s->definitions = bstrdup(def);
 		return false; // TODO find out WHY?
@@ -564,7 +561,8 @@ static void get_nb_frames(void *data, calldata_t *cd)
 
 static void *streamlink_source_create(obs_data_t *settings, obs_source_t *source)
 {
-	const auto s = static_cast<streamlink_source_t*>(bzalloc(sizeof(struct streamlink_source)));
+	const auto s = static_cast<streamlink_source_t*>(bzalloc(sizeof(streamlink_source)));
+
 	s->source = source;
 	s->available_definitions = new std::vector<std::string>;
 
