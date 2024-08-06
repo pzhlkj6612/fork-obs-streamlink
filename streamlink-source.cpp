@@ -299,7 +299,7 @@ static void *write_pipe_thread(void *data) {
 
     const auto s = static_cast<streamlink_source_t*>(data);
 
-#ifdef _MSC_VER
+#ifdef _WIN32
 	auto write_pipe = CreateNamedPipe(
 		s->pipe_path.c_str(),
 		PIPE_ACCESS_OUTBOUND,
@@ -349,7 +349,7 @@ static void *write_pipe_thread(void *data) {
 
 		if (read_buf.empty()) {
 			FF_BLOG(LOG_INFO, "read: EOF");
-#ifdef _MSC_VER
+#ifdef _WIN32
 			if (CloseHandle(write_pipe) == FALSE) {
 				std::stringstream msg{};
 				msg << "CloseHandle(pipe_write_handle): " << GetLastError();
@@ -361,7 +361,7 @@ static void *write_pipe_thread(void *data) {
 			break;
 		}
 
-#ifdef _MSC_VER
+#ifdef _WIN32
 		DWORD numWritten;
 		if (WriteFile(write_pipe, read_buf.data(), read_buf.size(), &numWritten, nullptr) == FALSE) {
 			auto ec = GetLastError();
@@ -560,7 +560,7 @@ static void *streamlink_source_create(obs_data_t *settings, obs_source_t *source
 	s->hotkey = obs_hotkey_register_source(source, "MediaSource.Restart",
 					       obs_module_text("RestartMedia"),
 					       restart_hotkey, s);
-	s->selected_definition = std::string{"best"};
+	s->selected_definition = "best";  // linux: not using std::string{...} here because of segfault on __memmove_avx_unaligned_erms()
 
 	proc_handler_t *ph = obs_source_get_proc_handler(source);
 	proc_handler_add(ph, "void restart()", restart_proc, s);
@@ -576,7 +576,7 @@ static void *streamlink_source_create(obs_data_t *settings, obs_source_t *source
 
 	{
 		std::stringstream path{};
-#ifdef _MSC_VER
+#ifdef _WIN32
     	path << R"(\\.\pipe\obs-streamlink-)";
 #else
     	path << "/tmp/obs-streamlink-pipe-";
