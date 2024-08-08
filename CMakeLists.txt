@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.22.1)
 
+
 project(obs-streamlink C CXX)
 set(CMAKE_CXX_STANDARD 17)
 
@@ -7,9 +8,6 @@ list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}")
 
 find_package(Python 3.8...<3.12 REQUIRED COMPONENTS Development)
 find_package(FFmpeg REQUIRED COMPONENTS swscale)
-
-
-# TODO: obsproject/obs-websocket/cmake/FindLibObs.cmake
 
 
 set(OBS_STUDIO_SOURCE_PATH "" CACHE PATH "the path to the source code of OBS Studio")
@@ -64,7 +62,21 @@ if (WIN32)
     install(DIRECTORY ${CMAKE_SOURCE_DIR}/data/
             DESTINATION "data/obs-plugins/obs-streamlink")
 elseif (APPLE)
-    # TODO
+    # https://github.com/obsproject/obs-plugintemplate/blob/e3688b7491c52ef6e37ac59daa93e7cf4d9e2b28/cmake/macos/helpers.cmake#L29-L30
+    set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES
+            BUNDLE TRUE
+            BUNDLE_EXTENSION plugin)
+
+    # https://github.com/obsproject/obs-plugintemplate/blob/e3688b7491c52ef6e37ac59daa93e7cf4d9e2b28/cmake/macos/helpers.cmake#L60-L65
+    install(TARGETS ${CMAKE_PROJECT_NAME}
+            LIBRARY DESTINATION .)
+    # TODO: test
+    install(FILES "$<TARGET_BUNDLE_DIR:${CMAKE_PROJECT_NAME}>.dsym"
+            CONFIGURATIONS Release
+            DESTINATION .
+            OPTIONAL)
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/data/
+            DESTINATION "${CMAKE_PROJECT_NAME}.plugin/Contents/Resources")
 else ()
     # https://github.com/obsproject/obs-plugintemplate/blob/e3688b7491c52ef6e37ac59daa93e7cf4d9e2b28/cmake/linux/defaults.cmake#L10
     include(GNUInstallDirs)
@@ -77,7 +89,8 @@ else ()
     # to be able to find libobs.so
     set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES
             INSTALL_RPATH "$ORIGIN/..")
-endif()
+endif ()
+
 
 set(OBS_STUDIO_BUILD_PATH "${CMAKE_BINARY_DIR}/obs-studio-build")
 
@@ -95,7 +108,6 @@ ExternalProject_Add(obs-studio-source
             -DENABLE_BROWSER=OFF
             -DENABLE_AJA=0
             -DENABLE_WEBRTC=0
-            -DQT_VERSION=6
             -DENABLE_SCRIPTING=OFF
             -DENABLE_PLUGINS=OFF
             -DENABLE_UPDATER=OFF
