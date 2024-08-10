@@ -35,9 +35,6 @@ else ()
     add_library(${CMAKE_PROJECT_NAME} SHARED ${SRC_FILES})
 endif ()
 
-if (WIN32)
-    target_sources(${CMAKE_PROJECT_NAME} PRIVATE streamlink-delayload.cpp)
-endif ()
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE "deps/")
 target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE media-playback Python::Module Python::Python #[[ TODO ]] libobs)
 if (WIN32)
@@ -45,11 +42,6 @@ if (WIN32)
 endif ()
 # https://stackoverflow.com/questions/47690822/possible-to-force-cmake-msvc-to-use-utf-8-encoding-for-source-files-without-a-bo
 target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE "$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
-
-if (WIN32)
-    get_filename_component(python-stable-abi-lib-filename ${Python_RUNTIME_LIBRARY} NAME)
-    target_link_options(${CMAKE_PROJECT_NAME} PRIVATE "/DELAYLOAD:${python-stable-abi-lib-filename}")
-endif ()
 
 if (WIN32)
     install(TARGETS ${CMAKE_PROJECT_NAME}
