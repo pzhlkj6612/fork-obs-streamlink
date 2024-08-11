@@ -272,12 +272,6 @@ int streamlink_open(streamlink_source_t* c) {
 		auto udly = pref->second.Open();
 		c->stream = std::make_unique<streamlink::Stream>(udly);
 	}catch (std::exception & ex) {
-		/*
-		 TODO: if there are multiple sources:
-			   File "A:\python-3.8.0-embed-amd64\lib\site-packages\streamlink\session\session.py", line 148, in streams
-			   File "A:\python-3.8.0-embed-amd64\lib\site-packages\streamlink\plugin\plugin.py", line 397, in streams
-			 PluginError: set_wakeup_fd only works in main thread
-		 */
 		FF_LOG(LOG_WARNING, "Failed to open streamlink stream for URL \"%s\"! \n%s", c->live_room_url.c_str(), ex.what());
 		return -1;
 	}
@@ -497,59 +491,6 @@ static void restart_hotkey(void *data, obs_hotkey_id id, obs_hotkey_t *hotkey,
 		streamlink_source_start(s);
 }
 
-static void restart_proc(void *data, calldata_t *cd)
-{
-	restart_hotkey(data, 0, nullptr, true);
-	UNUSED_PARAMETER(cd);
-}
-
-static void get_duration(void *data, calldata_t *cd)
-{
-	const auto s = static_cast<streamlink_source_t*>(data);
-	int64_t dur = 0;
-	if (s->media.fmt)
-		dur = s->media.fmt->duration;
-
-	calldata_set_int(cd, "duration", dur * 1000);
-}
-
-static void get_nb_frames(void *data, calldata_t *cd)
-{
-	const auto s = static_cast<streamlink_source_t*>(data);
-	int64_t frames = 0;
-
-	if (!s->media.fmt) {
-		calldata_set_int(cd, "num_frames", frames);
-		return;
-	}
-
-	int video_stream_index = av_find_best_stream(
-		s->media.fmt, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
-
-	if (video_stream_index < 0) {
-		FF_BLOG(LOG_WARNING, "Getting number of frames failed: No "
-				     "video stream in media file!");
-		calldata_set_int(cd, "num_frames", frames);
-		return;
-	}
-
-	AVStream *stream = s->media.fmt->streams[video_stream_index];
-
-	if (stream->nb_frames > 0) {
-		frames = stream->nb_frames;
-	} else {
-		FF_LOG(LOG_DEBUG, "nb_frames not set, estimating using frame "
-				   "rate and duration");
-		const AVRational avg_frame_rate = stream->avg_frame_rate;
-		frames = static_cast<int64_t>(ceil(static_cast<double>(s->media.fmt->duration) /
-			static_cast<double>(AV_TIME_BASE) *
-			static_cast<double>(avg_frame_rate.num) /
-			static_cast<double>(avg_frame_rate.den)));
-	}
-
-	calldata_set_int(cd, "num_frames", frames);
-}
-
 static void *streamlink_source_create(obs_data_t *settings, obs_source_t *source)
 {
 	const auto s = static_cast<streamlink_source_t*>(bzalloc(sizeof(streamlink_source)));
@@ -557,17 +498,10 @@ static void *streamlink_source_create(obs_data_t *settings, obs_source_t *source
 	s->source = source;
 	s->available_definitions = std::vector<std::string>{};
 
-	s->hotkey = obs_hotkey_register_source(source, "MediaSource.Restart",
+	s->hotkey = obs_hotkey_register_source(source, "StreamlinkSource.Restart",
 					       obs_module_text("RestartMedia"),
 					       restart_hotkey, s);
 	s->selected_definition = "best";  // linux: not using std::string{...} here because of segfault on __memmove_avx_unaligned_erms()
-
-	proc_handler_t *ph = obs_source_get_proc_handler(source);
-	proc_handler_add(ph, "void restart()", restart_proc, s);
-	proc_handler_add(ph, "void get_duration(out int duration)",
-			 get_duration, s);
-	proc_handler_add(ph, "void get_nb_frames(out int num_frames)",
-			 get_nb_frames, s);
 
 	if (!update_streamlink_session(s, settings)) {
 		streamlink_source_destroy(s);
@@ -577,12 +511,12 @@ static void *streamlink_source_create(obs_data_t *settings, obs_source_t *source
 	{
 		std::stringstream path{};
 #ifdef _WIN32
-    	path << R"(\\.\pipe\obs-streamlink-)";
+		path << R"(\\.\pipe\obs-streamlink-[)" << obs_source_get_name(source) << "]-";
 #else
-    	path << "/tmp/obs-streamlink-pipe-";
+		path << "/tmp/obs-streamlink-pipe-[" << obs_source_get_name(source) << "]-";
 #endif
-    	path << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-    	s->pipe_path = path.str();
+		path << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+		s->pipe_path = path.str();
 	}
 
 	streamlink_source_update(s, settings);
@@ -633,39 +567,17 @@ static void streamlink_source_hide(void *data)
 	streamlink_close(s);
 }
 
-static void streamlink_source_restart(void* data)
-{
-	streamlink_source_hide(data);
-	streamlink_source_show(data);
-}
-
 extern "C" obs_source_info streamlink_source_info = {
-	"streamlink_source",                                  // id
-	OBS_SOURCE_TYPE_INPUT,                                // type
-	OBS_SOURCE_ASYNC_VIDEO                                // output_flags
-	| OBS_SOURCE_AUDIO
-	| OBS_SOURCE_DO_NOT_DUPLICATE
-	| OBS_SOURCE_CONTROLLABLE_MEDIA,
-	streamlink_source_getname,                            // get_name
-	streamlink_source_create,                             // create
-	streamlink_source_destroy,                            // destroy
-	nullptr, nullptr,                                     // get_width, get_height
-	streamlink_source_defaults,                           // get_defaults
-	streamlink_source_getproperties,                      // get_properties
-	streamlink_source_update,                             // update
-	nullptr, nullptr,                                     // activate, deactivate: Not called when shown in preview
-	streamlink_source_show, streamlink_source_hide,       // show, hide
-	streamlink_source_tick,                               // video_tick
-	nullptr,                                              // video_render
-	nullptr, nullptr,                                     // filter_video, filter_audio
-	nullptr,                                              // enum_active_sources
-	nullptr, nullptr,                                     // save, load
-	nullptr, nullptr, nullptr, nullptr,                   // mouse_move, mouse_wheel, focus, key_click
-	nullptr, nullptr, nullptr, nullptr, nullptr,
-	nullptr, nullptr, nullptr, nullptr, nullptr,nullptr,
-	OBS_ICON_TYPE_MEDIA,                                  // icon_type
-	nullptr,                                              // media_play_pause
-	streamlink_source_restart,                            // media_restart
-	streamlink_source_hide,                               // stop
-	// other initializer omitted
+	.id = "streamlink_source",
+	.type = OBS_SOURCE_TYPE_INPUT,
+	.output_flags = OBS_SOURCE_ASYNC_VIDEO | OBS_SOURCE_AUDIO | OBS_SOURCE_DO_NOT_DUPLICATE,
+	.get_name = streamlink_source_getname,
+	.create = streamlink_source_create,
+	.destroy = streamlink_source_destroy,
+	.get_defaults = streamlink_source_defaults,
+	.get_properties = streamlink_source_getproperties,
+	.update = streamlink_source_update,
+	.show = streamlink_source_show, .hide = streamlink_source_hide,
+	.video_tick = streamlink_source_tick,
+	.icon_type = OBS_ICON_TYPE_MEDIA,
 };  // NOLINT(clang-diagnostic-missing-field-initializers)
